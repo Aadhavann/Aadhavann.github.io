@@ -150,7 +150,7 @@ const HestonModel = () => {
   }, []);
 
   return (
-    <div className="max-w-7xl mx-auto p-6 bg-[rgb(8,8,12)] min-h-screen">
+    <div className="w-full mx-auto p-6 bg-[rgb(8,8,12)] min-h-screen">
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-[rgb(240,255,255)] mb-2" style={{textShadow: '0 0 10px rgba(0,255,65,0.3)'}}>Heston Stochastic Volatility Model</h1>
         <p className="text-[rgb(170,170,180)]">Advanced option pricing with stochastic volatility</p>

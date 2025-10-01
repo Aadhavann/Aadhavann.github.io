@@ -1,0 +1,64 @@
+---
+title: 'Heston Stochastic Volatility Model'
+description: 'An interactive exploration of the Heston model for option pricing with stochastic volatility'
+pubDate: 'Oct 02 2025'
+heroImage: '../../assets/heston-stochastic-volatility.png'
+---
+
+import HestonModel from '../../components/HestonModel.jsx';
+
+The Heston model is a sophisticated mathematical framework for pricing options that accounts for the reality that volatility itself is not constant but varies randomly over time. Unlike the classic Black-Scholes model which assumes constant volatility, the Heston model introduces a stochastic process for volatility, making it more realistic for capturing market dynamics.
+
+## What Makes the Heston Model Special?
+
+The Heston model extends the Black-Scholes framework by modeling volatility as a mean-reverting stochastic process. This captures several important market phenomena:
+
+- **Volatility Clustering**: Periods of high volatility tend to cluster together, as do periods of low volatility
+- **Mean Reversion**: Volatility tends to revert to a long-term average level over time
+- **Correlation Effects**: The model captures the empirically observed negative correlation between price movements and volatility changes (leverage effect)
+- **Volatility Smile**: Unlike Black-Scholes, Heston can reproduce the "smile" pattern observed in implied volatilities across different strike prices
+
+## The Mathematics
+
+The Heston model is defined by two coupled stochastic differential equations:
+
+- **Price Process**: dS = rS dt + √V S dW₁
+- **Volatility Process**: dV = κ(θ - V) dt + σ√V dW₂
+
+Where:
+- **S** is the stock price
+- **V** is the variance (volatility squared)
+- **r** is the risk-free rate
+- **κ (kappa)** controls the speed of mean reversion
+- **θ (theta)** is the long-term average volatility level
+- **σ (sigma)** is the volatility of volatility
+- **ρ (rho)** is the correlation between the two Brownian motions W₁ and W₂
+
+## Interactive Simulation
+
+Below is an interactive Monte Carlo simulation of the Heston model. Adjust the parameters to see how they affect stock price paths, volatility dynamics, and option pricing. The simulation displays up to 10 sample paths and calculates statistics over the full set of simulated paths.
+
+<HestonModel client:load />
+
+## Comparing with Black-Scholes
+
+The statistics panel shows both the Heston Monte Carlo option price and the Black-Scholes price for comparison. The difference between these prices highlights the impact of stochastic volatility. Generally, you'll observe:
+
+- **Negative correlation (ρ < 0)**: Increases option prices compared to Black-Scholes, as downward price movements coincide with increased volatility
+- **High vol-of-vol (σ)**: Creates fatter tails in the distribution, also increasing option prices
+- **Mean reversion speed (κ)**: Faster mean reversion reduces the long-term impact of volatility shocks
+
+## The Feller Condition
+
+The model diagnostics display the Feller condition: 2κθ/σ². When this ratio is ≥ 1, the volatility process is guaranteed to remain positive. When it's < 1, there's a small probability the volatility could theoretically become negative (though the simulation implementation prevents this).
+
+## Practical Applications
+
+The Heston model is widely used in financial markets for:
+
+- Pricing exotic options and structured products
+- Risk management and VaR calculations
+- Volatility surface modeling
+- Calibration to market data for derivatives trading
+
+Try experimenting with the parameters above to develop intuition for how each component affects the model's behavior!

@@ -1,0 +1,156 @@
+---
+title: 'Kelly Criterion: Optimal Bet Sizing'
+description: 'An interactive exploration of the Kelly Criterion for optimal position sizing and bankroll management'
+pubDate: 'Oct 02 2025'
+heroImage: '../../assets/kelly-criterion.png'
+---
+
+import KellyCriterion from '../../components/KellyCriterion.jsx';
+
+The Kelly Criterion is a mathematical formula used to determine the optimal size of a series of bets or investments to maximize long-term wealth growth. Developed by John L. Kelly Jr. in 1956, this powerful tool has applications ranging from gambling and sports betting to portfolio management and trading strategies.
+
+## The Problem of Position Sizing
+
+One of the most critical—yet often overlooked—questions in investing and betting is: "How much should I wager?" Bet too little, and you sacrifice potential growth. Bet too much, and you risk catastrophic losses. The Kelly Criterion provides a mathematically optimal answer.
+
+## The Formula
+
+The Kelly Criterion formula is elegantly simple:
+
+**f* = (bp - q) / b**
+
+Where:
+- **f*** is the fraction of your bankroll to bet
+- **b** is the odds received on the bet (win ratio)
+- **p** is the probability of winning
+- **q** is the probability of losing (1 - p)
+
+For investments with asymmetric payoffs, the generalized formula becomes:
+
+**f* = (p × b - q × a) / (a × b)**
+
+Where **a** is the loss ratio (how much you lose when you lose).
+
+## Interactive Calculator
+
+Experiment with the Kelly Criterion calculator below. Adjust the win probability, payout ratios, and see how different strategies compare over multiple bets.
+
+<KellyCriterion client:load />
+
+## Key Insights
+
+### Maximizing Growth
+
+The Kelly Criterion doesn't maximize expected profit on any single bet—it maximizes the expected logarithmic growth rate of your bankroll. Over the long run, this approach will outperform any other betting strategy.
+
+### The Half-Kelly Strategy
+
+Many practitioners use "Half Kelly" (betting half the Kelly-optimal fraction) because:
+
+- It provides nearly the same long-term growth rate (about 75% of full Kelly)
+- It dramatically reduces volatility and drawdown risk
+- It's more forgiving of estimation errors in probabilities
+
+### The Danger of Over-Betting
+
+The simulation demonstrates why "Double Kelly" is dangerous. Betting more than the Kelly-optimal amount:
+
+- Increases volatility exponentially
+- Can lead to severe drawdowns
+- May result in ruin despite positive expected value
+
+## Mathematical Properties
+
+The Kelly Criterion has several remarkable properties:
+
+1. **Never Risks Ruin**: When properly applied, Kelly betting never risks your entire bankroll (assuming f* < 1)
+2. **Minimizes Time to Goal**: It reaches any wealth target faster than any other strategy
+3. **Maximizes Median Outcome**: Not just expected value, but the most likely outcome
+4. **Path Independence**: The optimal fraction depends only on current capital, not betting history
+
+## Practical Applications
+
+### Portfolio Management
+
+Modern portfolio theory uses Kelly-inspired approaches for position sizing:
+
+- **Single Asset**: Determines optimal leverage for a single investment
+- **Multiple Assets**: Extends to portfolio allocation across correlated assets
+- **Risk Management**: Sets stop-loss levels and position limits
+
+### Trading Strategies
+
+Quantitative traders use the Kelly Criterion to:
+
+- Size positions based on edge and volatility
+- Manage leverage in futures and options trading
+- Determine optimal diversification across strategies
+- Calculate when to increase or decrease exposure
+
+### Sports Betting
+
+Professional bettors rely on Kelly for:
+
+- Bankroll management across multiple bets
+- Adjusting for varying confidence levels
+- Managing correlated outcomes
+- Long-term sustainability
+
+## Common Pitfalls
+
+### Overestimating Edge
+
+The Kelly Criterion is extremely sensitive to probability estimates. If you overestimate your win probability by just 5%, you could be betting double the optimal amount. This is why Half Kelly is often preferred—it provides a margin of safety.
+
+### Ignoring Correlations
+
+When making multiple bets, assuming independence when correlations exist can lead to over-betting. Correlated bets effectively increase your exposure beyond what individual Kelly calculations suggest.
+
+### Psychological Challenges
+
+Even when Kelly suggests a large bet size, psychological factors matter:
+
+- **Drawdown Tolerance**: Can you handle the inevitable losing streaks?
+- **Opportunity Cost**: Are there other uses for capital with better risk-adjusted returns?
+- **Liquidity Needs**: Do you need access to capital in the short term?
+
+## Extensions and Variations
+
+The basic Kelly formula has been extended in various ways:
+
+- **Simultaneous Bets**: Optimizing across multiple concurrent opportunities
+- **Uncertain Probabilities**: Bayesian approaches for probability estimation
+- **Utility Functions**: Incorporating risk preferences beyond log utility
+- **Time Constraints**: Adjusting for finite time horizons vs. infinite
+
+## The Mathematics of Growth
+
+Why does Kelly maximize growth? It maximizes the expected value of:
+
+**E[log(Wealth)]**
+
+This is equivalent to maximizing the geometric mean return, which is always less than or equal to the arithmetic mean. The geometric mean is what actually determines long-term compound growth.
+
+## Comparing Strategies
+
+The interactive simulation above compares four strategies:
+
+1. **Full Kelly**: Maximum growth rate but highest volatility
+2. **Half Kelly**: Nearly optimal growth with much lower variance
+3. **Double Kelly**: Demonstrates over-betting risk
+4. **Fixed 5%**: Conservative approach, independent of edge
+
+Observe how Half Kelly often outperforms Full Kelly in practice due to lower variance, while Double Kelly frequently leads to significant drawdowns or even ruin.
+
+## Final Thoughts
+
+The Kelly Criterion is a powerful tool, but it's not a magic formula. It requires:
+
+- Accurate probability and payout estimates
+- Discipline to follow the strategy through drawdowns
+- Understanding of its assumptions and limitations
+- Adjustment for practical constraints and risk tolerance
+
+When used thoughtfully, the Kelly Criterion provides a rigorous framework for thinking about position sizing and risk management—whether you're betting on sports, trading markets, or managing an investment portfolio.
+
+Experiment with the calculator above to develop intuition for how different parameters affect optimal bet sizing and long-term outcomes!

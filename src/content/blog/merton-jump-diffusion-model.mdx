@@ -1,0 +1,102 @@
+---
+title: 'Merton Jump Diffusion Model'
+description: 'An interactive exploration of the Merton model for pricing options with both continuous diffusion and discontinuous jumps'
+pubDate: 'Oct 02 2025'
+heroImage: '../../assets/merton-jump-diffusion.png'
+---
+
+import MertonJumpDiffusion from '../../components/MertonJumpDiffusion.jsx';
+
+The Merton Jump Diffusion model extends traditional option pricing frameworks by incorporating sudden, discontinuous price movements—the kind we observe during market crashes, surprise earnings announcements, or unexpected geopolitical events. While the Black-Scholes model assumes stock prices move smoothly, the Merton model acknowledges that real markets experience both continuous fluctuations and abrupt jumps.
+
+## Why Model Jumps?
+
+Financial markets exhibit two distinct types of price movements:
+
+- **Continuous Diffusion**: The everyday random walk of prices driven by normal market activity
+- **Discontinuous Jumps**: Sudden price changes triggered by news events, earnings surprises, or market shocks
+
+Traditional models like Black-Scholes only capture the first type, leading to systematic underpricing of tail risk—particularly for out-of-the-money options. The Merton model addresses this limitation by combining both components into a single framework.
+
+## The Mathematics
+
+The Merton Jump Diffusion model is defined by the stochastic differential equation:
+
+**dS = (r - λk)S dt + σS dW + S∫ J dN(t)**
+
+Where:
+- **S** is the stock price
+- **r** is the risk-free rate
+- **σ** is the continuous diffusion volatility
+- **λ (lambda)** is the jump intensity (expected jumps per year)
+- **k** is the expected relative jump size minus 1
+- **J** is the jump size, typically modeled as log-normal
+- **N(t)** is a Poisson process counting the number of jumps
+- **W** is a standard Brownian motion
+
+The model combines:
+1. A **drift term** adjusted for jump compensation: (r - λk)S dt
+2. A **diffusion component**: σS dW (continuous volatility)
+3. A **jump component**: S∫ J dN(t) (discontinuous shocks)
+
+## Interactive Simulation
+
+Below is an interactive Monte Carlo simulation of the Merton Jump Diffusion model. Experiment with different parameters to see how jump intensity, jump size, and volatility affect price paths and option pricing. The red dots highlight jump events when they occur.
+
+<MertonJumpDiffusion client:load />
+
+## Understanding the Parameters
+
+### Jump Parameters
+
+- **λ (Lambda) - Jump Intensity**: Controls how frequently jumps occur. A value of 0.1 means roughly one jump every 10 years on average
+- **μⱼ (Mu-J) - Mean Jump Size**: The average percentage change when a jump occurs. Negative values model downward crashes
+- **σⱼ (Sigma-J) - Jump Volatility**: The variability in jump sizes. Higher values mean more unpredictable jump magnitudes
+
+### Market Parameters
+
+- **σ (Sigma) - Diffusion Volatility**: The continuous volatility component, similar to Black-Scholes
+- **r - Risk-Free Rate**: The baseline return rate used for discounting
+
+## Comparing with Black-Scholes
+
+The option pricing results panel compares the Merton model with the Black-Scholes model. Key observations:
+
+- **Negative jumps** (μⱼ < 0): Typically increase put option prices and decrease call option prices relative to Black-Scholes
+- **Positive jumps** (μⱼ > 0): Have the opposite effect
+- **Higher jump volatility** (σⱼ): Increases prices for both calls and puts, as it fattens the tails of the return distribution
+- **Higher jump intensity** (λ): Amplifies the impact of jumps on option prices
+
+## Jump Statistics
+
+The jump statistics panel provides insights into the realized jump behavior across all simulated paths:
+
+- **Total Jumps**: Count of all jump events across the simulation
+- **Jump Frequency**: Actual jumps per year (should be close to λ for large simulations)
+- **Average Jump Size**: Realized average jump magnitude (should approach μⱼ)
+
+## Practical Applications
+
+The Merton Jump Diffusion model is particularly valuable for:
+
+- **Tail Risk Management**: Better capturing extreme loss scenarios for Value-at-Risk (VaR) calculations
+- **Crisis Modeling**: Pricing derivatives during periods of market stress
+- **Event Risk**: Valuing options around earnings announcements or regulatory decisions
+- **Volatility Smile Modeling**: Explaining the implied volatility patterns observed in options markets
+- **Exotic Options**: Pricing path-dependent derivatives that are sensitive to jump risk
+
+## The Volatility Smile
+
+One of the key empirical successes of jump-diffusion models is their ability to reproduce the "volatility smile"—the pattern where out-of-the-money options have higher implied volatilities than at-the-money options. This occurs because jumps create fatter tails in the return distribution, which the market prices into options that are sensitive to extreme moves.
+
+Try adjusting the jump parameters above and observing how the final price distribution changes. Notice how negative jumps create a left skew, while positive jumps create a right skew—patterns commonly observed in equity and commodity markets.
+
+## Extensions and Variations
+
+The Merton model has inspired numerous extensions:
+
+- **Double Exponential Jump Diffusion**: Uses asymmetric distributions for up and down jumps
+- **Variance Gamma**: Replaces the Poisson process with a more flexible arrival structure
+- **SVJJ Models**: Combine stochastic volatility (like Heston) with jumps in both price and volatility
+
+Experiment with the interactive simulation to build intuition for how jump risk affects option pricing and market dynamics!
