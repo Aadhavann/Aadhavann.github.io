@@ -1,0 +1,42 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
+import { Image } from 'astro:assets';
+import HomeHeroImage from '../assets/1.png';
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
+	</head>
+	<body>
+		<Header />
+		<main>
+			<Image src={HomeHeroImage} alt="Prompt and Circumstance Blog" />
+			<h1>Welcome to Prompt and Circumstance</h1>
+			<p>
+				Hey there! I'm <strong>Aadhavan</strong>, a computer science student passionate about the intersection of technology and finance. This blog is where I explore the fascinating world of <strong>Large Language Models</strong>, <strong>Machine Learning</strong>, <strong>Data Science</strong>, and <strong>Financial Risk Management</strong>.
+			</p>
+			<p>
+				Currently diving deep into both the technical and theoretical aspects of AI while preparing for the <strong>Financial Risk Manager (FRM)</strong> exam. You'll find insights on everything from transformer architectures and multimodal AI to quantitative finance and risk modeling.
+			</p>
+			<h2>What You'll Find Here</h2>
+			<ul>
+				<li><strong>LLM Deep Dives</strong> - Exploring text and image models, their architectures, and applications</li>
+				<li><strong>ML/DS Tutorials</strong> - Practical guides and theoretical insights in machine learning and data science</li>
+				<li><strong>Finance & Risk</strong> - Quantitative finance, risk management, and fintech innovations</li>
+				<li><strong>Student Perspectives</strong> - Learning journey insights and academic project breakdowns</li>
+			</ul>
+			<p>
+				Whether you're a fellow student, researcher, or practitioner in these fields, I hope you find something valuable here. Let's explore the prompts and circumstances that shape our AI-driven future together.
+			</p>
+			<p>
+				<a href="/blog">Start reading →</a>
+			</p>
+		</main>
+		<Footer />
+	</body>
+</html>
