@@ -1,0 +1,296 @@
+---
+title: 'Building a GraphQL Schema Registry: Breaking Change Detection'
+description: 'How I built an open-source schema versioning system to prevent production disasters'
+pubDate: 'Oct 04 2025'
+heroImage: '../../assets/graphql-schema-registry.png'
+---
+
+On a Tuesday afternoon, I pushed a GraphQL schema change that removed a field. Within minutes, our mobile app started crashing. The field was deprecated months ago, but some clients still queried it. The fix was simple—rollback the schema—but the damage was done. Users were angry, and I was frustrated. This is when I decided to build a schema registry that would catch these issues before they hit production. Think Apollo Studio, but lightweight, open-source, and free.
+
+## The Problem Space
+
+Schema evolution is one of the most dangerous aspects of GraphQL development. Unlike REST APIs where endpoints are versioned independently, GraphQL typically uses a single evolving schema. A seemingly innocent change—removing an unused field, changing a type, or adding a required argument—can silently break client applications in production.
+
+Manual schema reviews don't scale, especially with distributed teams and frequent deployments. We needed automated detection before deployment, and existing solutions like Apollo Studio were too expensive for individual developers and small teams.
+
+## Core Features
+
+The schema registry I built provides:
+
+- **Schema versioning & storage** - Track every version with commit hashes and timestamps
+- **Breaking change detection** - Categorize changes as safe, dangerous, or breaking
+- **Validation pipeline** - Validate SDL syntax and detect antipatterns
+- **CLI tool with visual diff** - Beautiful terminal output with color-coded changes
+- **GitHub Action for CI/CD** - Automated checks on every pull request
+
+## The Diff Engine: Detecting Breaking Changes
+
+The heart of the system is the diff engine. It takes two GraphQL schemas (old and new), parses them into Abstract Syntax Trees (ASTs), and compares every type, field, argument, and enum value. But not all changes are equal.
+
+### What Makes a Change "Breaking"?
+
+Changes fall into three categories:
+
+**✅ Safe Changes:**
+- Adding optional fields
+- Adding new types
+- Adding optional arguments
+
+**⚠️ Dangerous Changes:**
+- Adding enum values (clients may not handle new values)
+- Adding union members (clients may not handle new types)
+
+**🔴 Breaking Changes:**
+- Removing fields or types
+- Changing field types
+- Removing enum values
+- Making optional fields required
+
+### Implementation Details
+
+The diff engine uses graphql-js to parse SDL into AST structures, then performs deep comparisons across type systems. Here's a simplified example of the field comparison logic:
+
+```typescript
+// Example from diffService.ts
+private diffFields(typeName: string, oldType, newType): SchemaChange[] {
+  const changes: SchemaChange[] = [];
+
+  // Removed field = BREAKING
+  for (const [fieldName, oldField] of oldFields) {
+    if (!newFields.has(fieldName)) {
+      changes.push({
+        type: 'breaking',
+        category: 'FIELD_REMOVED',
+        message: `Field '${fieldName}' was removed from type '${typeName}'`
+      });
+    }
+  }
+
+  // Added non-null field = BREAKING
+  for (const [fieldName, newField] of newFields) {
+    if (!oldField) {
+      const isNullable = newField.type.kind !== 'NonNullType';
+      changes.push({
+        type: isNullable ? 'safe' : 'breaking',
+        category: 'FIELD_ADDED',
+        message: `Field '${fieldName}' was added${!isNullable ? ' (non-nullable)' : ''}`
+      });
+    }
+  }
+}
+```
+
+One of the trickiest aspects was handling GraphQL's recursive type system. Types like `[User!]!` require unwrapping multiple layers: NonNullType → ListType → NonNullType → NamedType.
+
+## The CLI Experience
+
+The CLI provides immediate feedback with color-coded visual hierarchy. Here's what a diff looks like when breaking changes are detected:
+
+```
+════════════════════════════════════════════════════════════════════════════════
+║Schema Diff: demo (1.0.0 → 2.0.0)                                            ║
+════════════════════════════════════════════════════════════════════════════════
+
+🔴 BREAKING CHANGES (2)
+────────────────────────────────────────────────────────────────────────────────
+
+  1. FIELD_REMOVED
+     Field 'email' was removed from type 'User'
+     📍 User.email
+
+  2. TYPE_REMOVED
+     Type 'Post' was removed
+     📍 Post
+
+
+⚠️  DANGEROUS CHANGES (1)
+────────────────────────────────────────────────────────────────────────────────
+
+  1. ENUM_VALUE_ADDED
+     Enum value 'ARCHIVED' was added to 'Status' (clients may not handle it)
+     📍 Status.ARCHIVED
+
+
+✅ SAFE CHANGES (5)
+────────────────────────────────────────────────────────────────────────────────
+
+  1. FIELD_ADDED
+     Field 'updatedAt' was added to type 'User'
+     📍 User.updatedAt
+
+  2. FIELD_ADDED
+     Field 'comments' was added to type 'User'
+     📍 User.comments
+
+  3. TYPE_ADDED
+     Type 'Comment' was added
+     📍 Comment
+
+  4. FIELD_ADDED
+     Field 'comments' was added to type 'Post'
+     📍 Post.comments
+
+  5. ARG_ADDED
+     Argument 'limit' was added to field 'Query.users'
+     📍 Query.users(limit)
+
+
+════════════════════════════════════════════════════════════════════════════════
+║ SUMMARY                                                                      ║
+╠═══════════════════════════════════════════════════════════════════════════════
+║  🔴 Breaking:    2                                                           ║
+║  ⚠️  Dangerous:  1                                                           ║
+║  ✅ Safe:        5                                                           ║
+╠═══════════════════════════════════════════════════════════════════════════════
+║  ❌ DEPLOYMENT BLOCKED - Breaking changes must be resolved                   ║
+════════════════════════════════════════════════════════════════════════════════
+```
+
+The CLI also provides a schema history view showing all versions over time:
+
+```
+════════════════════════════════════════════════════════════════════════════════
+║Schema History: demo                                                         ║
+════════════════════════════════════════════════════════════════════════════════
+
+┌───────────────────────────────────────────────────────────────────────────────
+│ ● LATEST Version 2.0.0
+├───────────────────────────────────────────────────────────────────────────────
+│ ID:      f47ac10b-58cc-4372-a567-0e02b2c3d479
+│ Created: 1/4/2025, 2:30:15 PM
+│ Commit:  abc12345
+└───────────────────────────────────────────────────────────────────────────────
+
+┌───────────────────────────────────────────────────────────────────────────────
+│ ○ Version 1.5.0
+├───────────────────────────────────────────────────────────────────────────────
+│ ID:      b3d4e5f6-78g9-0h1i-j2k3-l4m5n6o7p8q9
+│ Created: 1/3/2025, 11:20:45 AM
+│ Commit:  def67890
+└───────────────────────────────────────────────────────────────────────────────
+
+┌───────────────────────────────────────────────────────────────────────────────
+│ ○ Version 1.0.0
+├───────────────────────────────────────────────────────────────────────────────
+│ ID:      c5d6e7f8-9g0h-1i2j-k3l4-m5n6o7p8q9r0
+│ Created: 1/1/2025, 9:00:00 AM
+│ Commit:  ghi11213
+└───────────────────────────────────────────────────────────────────────────────
+
+Total versions: 3
+```
+
+## CI/CD Integration: The GitHub Action
+
+The most powerful feature is the GitHub Action that blocks problematic schema changes before they reach production. When integrated into your CI/CD pipeline, it automatically validates schema changes on every pull request.
+
+When a safe schema is uploaded:
+
+```
+📤 Uploading schema...
+Service: demo
+Version: 1.0.0
+
+✅ Schema uploaded successfully!
+ID: f47ac10b-58cc-4372-a567-0e02b2c3d479
+```
+
+When breaking changes are detected:
+
+```
+📤 Uploading schema...
+Service: demo
+Version: 2.0.0
+
+❌ Breaking changes detected!
+
+  • Field 'email' was removed from type 'User'
+    Path: User.email
+  • Type 'Post' was removed
+    Path: Post
+```
+
+The action fails, blocking the merge and adding details to the PR. This catches issues during code review, eliminating manual schema audits and working with any GraphQL project.
+
+## Architecture & Stack
+
+I chose a minimal but robust stack:
+
+| Technology | Why I Chose It |
+|------------|----------------|
+| TypeScript | Type safety for GraphQL type system manipulation |
+| graphql-js | Official GraphQL parser - battle-tested AST handling |
+| Prisma + SQLite | Lightweight storage, easy local dev, production-ready |
+| Express | Simple REST API, widely understood |
+| Commander.js | Rich CLI framework with minimal setup |
+| Chalk | Terminal colors that work cross-platform |
+
+The system architecture follows a simple flow:
+
+```
+┌─────────────┐
+│   CLI Tool  │──────┐
+└─────────────┘      │
+                     ▼
+┌─────────────┐   ┌──────────────┐   ┌──────────────┐
+│GitHub Action│──▶│  Express API │──▶│ Prisma + DB  │
+└─────────────┘   └──────────────┘   └──────────────┘
+                     │
+                     ▼
+              ┌──────────────┐
+              │ Diff Service │
+              │ Validation   │
+              └──────────────┘
+```
+
+## Challenges & Solutions
+
+**Challenge: TypeScript Type Recursion**
+
+GraphQL types are recursive (`[User!]!`), requiring careful unwrapping:
+
+```typescript
+private typeToString(type: any): string {
+  if (type.kind === 'NonNullType') {
+    return `${this.typeToString(type.type)}!`;
+  }
+  if (type.kind === 'ListType') {
+    return `[${this.typeToString(type.type)}]`;
+  }
+  return type.name.value;
+}
+```
+
+**Challenge: Enum Values Are Dangerous, Not Breaking**
+
+Initially, I marked adding enum values as "breaking". However, I realized clients with switch statements typically just ignore unknown values (or should use default cases). I reclassified these as "dangerous"—warns but doesn't block deployment.
+
+**Challenge: CLI Output Formatting**
+
+Unicode box characters don't align consistently across terminals. The solution was using fixed width (80 chars) with careful padding calculation, accounting for ANSI color codes in string length calculations.
+
+## What I Learned
+
+- GraphQL's type system is more nuanced than I expected—breaking vs. dangerous changes require deep domain knowledge
+- Good CLI UX is 50% visual design—developers need quick, scannable feedback
+- AST manipulation is powerful but requires careful null handling and recursive thinking
+- Building developer tools requires empathy—what seems obvious to you may confuse users
+
+## Future Enhancements
+
+Potential features to add:
+
+- **Change impact analysis**: "This field is used in 3 queries"
+- **Auto-generated migration guides**: Suggest client code updates
+- **Schema composition**: Support for federated graphs
+- **Query performance tracking**: Monitor performance across versions
+- **Notifications**: Slack/Discord alerts for breaking changes
+- **Next.js dashboard**: Visual interface beyond CLI
+
+## Conclusion
+
+This project transformed a production incident into a robust tool that prevents similar mistakes. It taught me about GraphQL internals, AST manipulation, and the importance of developer experience in CLI tools. The entire build took about two weeks, and it's been running successfully in production, catching potential breaking changes before they impact users.
+
+The tool is perfect for teams that can't afford Apollo Studio or want full control over their schema management infrastructure. It's open-source, self-hosted, and designed to integrate seamlessly into existing GraphQL workflows.
+
+Try it out, contribute, or adapt it for your needs—the code is on GitHub, and I'd love to hear how you're managing schema evolution in your projects.
