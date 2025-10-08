@@ -8,6 +8,6 @@ import { defineConfig } from 'astro/config';
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://Prompt-and-Circumstance.github.io',
+	site: 'https://Aadhavann.github.io',
 	integrations: [mdx(), sitemap(), react(), tailwind()],
 });
