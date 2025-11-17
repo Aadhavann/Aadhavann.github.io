@@ -1,0 +1,301 @@
+---
+title: 'Building Full Rubber Jacket: A Real-Time Multiplayer FPS with Three.js'
+description: 'How I built a browser-based 1v1 multiplayer shooter with WebSockets, Three.js, and zero game engine dependencies'
+pubDate: 'Nov 18 2025'
+heroImage: '../../assets/gun.jpg'
+---
+
+The first time someone complained about lag in my FPS game, I was thrilled. Not because of the lag—but because it meant someone was actually playing my multiplayer shooter online with a friend halfway across the world. What started as a Three.js experiment turned into a fully-featured real-time multiplayer game with user authentication, matchmaking, and a complete game history system. No Unity, no Unreal Engine—just JavaScript, WebSockets, and a lot of physics calculations.
+
+## Why Build Another FPS?
+
+Browser-based 3D games are having a moment. With WebGL and modern JavaScript, you can build surprisingly complex experiences that run anywhere with a browser. But most examples are single-player tech demos. I wanted to answer a harder question: Could I build a competitive multiplayer FPS that felt responsive and fair, entirely in the browser?
+
+The constraints were simple:
+- Real-time gameplay with minimal latency
+- Server-authoritative hit detection to prevent cheating
+- Full user authentication and matchmaking
+- Beautiful visuals without relying on game engines
+
+![Game Screenshot](../../assets/game.png)
+
+## The Tech Stack: No Game Engine Required
+
+I chose a minimal but powerful stack:
+
+| Technology | Why I Chose It |
+|------------|----------------|
+| Three.js | Industry standard for WebGL, proven physics capabilities |
+| Node.js + Express | Fast, event-driven server perfect for real-time games |
+| WebSockets (ws) | Low-latency bidirectional communication |
+| SQLite + bcrypt | Lightweight persistence with secure authentication |
+| Octree + Capsule | Efficient collision detection without physics engines |
+
+The entire server logic fits in a single file (`server.js`), making it incredibly easy to understand and modify.
+
+## Architecture: Client-Server Game Loop
+
+The core challenge in multiplayer games is keeping two clients synchronized while maintaining fairness. Here's the event flow:
+
+```
+┌─────────────┐                  ┌──────────────┐                  ┌─────────────┐
+│  Player 1   │                  │    Server    │                  │  Player 2   │
+│   Browser   │                  │  (Node.js)   │                  │   Browser   │
+└─────────────┘                  └──────────────┘                  └─────────────┘
+       │                                │                                  │
+       │  playerUpdate (60Hz)           │                                  │
+       ├───────────────────────────────▶│                                  │
+       │                                │  opponentUpdate                  │
+       │                                ├─────────────────────────────────▶│
+       │                                │                                  │
+       │  shoot event                   │                                  │
+       ├───────────────────────────────▶│                                  │
+       │                                │  opponentShoot                   │
+       │                                ├─────────────────────────────────▶│
+       │                                │                                  │
+       │                                │  hit event                       │
+       │                                │◀─────────────────────────────────┤
+       │                                │                                  │
+       │  died event                    │  scoreUpdate (to both)           │
+       │◀───────────────────────────────┤─────────────────────────────────▶│
+       │                                │                                  │
+```
+
+The server maintains game state and broadcasts events to both clients in real-time.
+
+## The Login Experience: Material UI Meets WebGL
+
+![Login Screen](../../assets/login.png)
+
+First impressions matter. Instead of jumping straight into gameplay, I built a complete authentication flow with a dark Material UI theme:
+
+- **Glass morphism effects** with backdrop blur
+- **Gradient animations** that slowly shift across the background
+- **Custom imagery** with dark overlays for readability
+- **Smooth transitions** with hover effects and ripple animations
+
+The authentication uses bcrypt for password hashing and JWT tokens for session management. Users register, login, and are immediately dropped into the matchmaking lobby.
+
+## Game Mechanics: Simple Rules, Intense Gameplay
+
+The game follows a brutally simple ruleset:
+
+- **One-hit-kill mechanics** - Every shot counts
+- **First to 5 kills wins** - Fast-paced matches under 5 minutes
+- **Random spawn locations** - Keeps gameplay fair and unpredictable
+- **2-second respawn delay** - Punishes death but keeps the action flowing
+
+### Movement & Physics
+
+The movement system balances realism with arcade-style responsiveness:
+
+```javascript
+// Ground movement: Fast and responsive
+groundSpeed = 25 units/second
+
+// Air control: Limited but present
+airSpeed = 8 units/second
+
+// Jump mechanics
+jumpVelocity = 15 units
+gravity = 30 units/second²
+```
+
+Players move with WASD, jump with SPACE, look with the mouse, and shoot with left-click. The controls are immediately familiar to anyone who's played a modern FPS.
+
+### Collision Detection: Octree Magic
+
+The secret to smooth collision detection is the Octree spatial partitioning algorithm. Instead of checking collisions against every triangle in the map, the Octree divides 3D space into a tree structure:
+
+- Player capsule collider checks only nearby geometry
+- Efficient recursive traversal
+- Handles slopes, walls, and complex geometry naturally
+
+This runs at 60 FPS even on complex maps without any performance issues.
+
+## Real-Time Multiplayer: The WebSocket Layer
+
+The matchmaking system uses a queue-based approach:
+
+1. **Player joins queue** - Sends `findMatch` event via WebSocket
+2. **Server pairs players** - First two players in queue get matched
+3. **Game instance created** - Server generates unique game ID
+4. **Players notified** - Both clients receive `matchFound` with opponent info
+5. **2-second countdown** - UI displays countdown before gameplay starts
+
+Once matched, the server maintains a game state object tracking:
+
+```javascript
+{
+  id: 'unique-game-id',
+  player1: { id, username, socket, score: 0 },
+  player2: { id, username, socket, score: 0 },
+  startedAt: timestamp
+}
+```
+
+### Handling Disconnections & Reconnections
+
+One of the trickiest problems was handling disconnections. If a player's connection drops, they have a 10-second grace period to reconnect using the `rejoinGame` mechanism. If they don't reconnect in time, the opponent is declared the winner.
+
+## Combat System: Hit Registration
+
+Hit detection happens client-side but is validated server-side:
+
+1. **Client shoots** - Raycasts bullet trajectory, checks for intersections
+2. **Client reports hit** - Sends `hit` event to server
+3. **Server validates** - Checks that game is active and players are alive
+4. **Server broadcasts** - Sends `died` to victim, `scored` to shooter
+5. **Score updated** - Server increments score and broadcasts to both players
+
+To prevent double-counting, each bullet is tagged with `isMyBullet` flag, ensuring only the shooter detects hits with their own bullets.
+
+## Visual Polish: Making It Feel Premium
+
+The visual design elevates the game from tech demo to polished experience:
+
+### Dark Material UI Theme
+
+- Background gradients: `#1a1a2e → #16213e → #0f3460`
+- Primary colors: Light blue (`#90caf9`, `#64b5f6`, `#42a5f5`)
+- Success/Error: Green (`#4caf50`) and Red (`#f44336`)
+
+### Animation Effects
+
+- **Glass morphism** - Frosted glass containers with backdrop blur
+- **Gradient shifts** - Slowly animated backgrounds using CSS keyframes
+- **Hover effects** - Scale, glow, and elevation changes
+- **Ripple effects** - Expanding circles on button clicks
+- **Staggered fade-ins** - Sequential animations for lobby elements
+
+### Custom Backgrounds
+
+The game uses custom photography for visual atmosphere:
+- `login.jpg` - Login/register page background
+- `background.jpg` - Lobby and match history backgrounds
+- `gun.jpg` - Used as the hero image for this article
+
+All backgrounds have dark overlays (70-75% opacity) to ensure text readability while maintaining visual appeal.
+
+## Game History & Statistics
+
+After each match, the server records the complete game to SQLite:
+
+```sql
+CREATE TABLE games (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player1_id INTEGER NOT NULL,
+    player2_id INTEGER NOT NULL,
+    winner_id INTEGER NOT NULL,
+    player1_score INTEGER NOT NULL,
+    player2_score INTEGER NOT NULL,
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+Players can view their match history showing:
+- Opponent usernames
+- Final scores
+- Win/loss records
+- Match timestamps
+
+This creates a sense of progression and competitive tracking.
+
+## Deployment: Playing with Friends Worldwide
+
+The game supports three deployment options:
+
+**1. Same WiFi Network (Easiest)**
+- Find your local IP (`ipconfig` or `ifconfig`)
+- Share `http://YOUR_IP:3000/login.html` with friends on the same network
+
+**2. Internet Play with ngrok (Recommended)**
+- Run `ngrok http 3000`
+- Share the generated URL (e.g., `https://abc123.ngrok.io/login.html`)
+- Play with anyone, anywhere
+
+**3. Cloud Deployment (Always-On)**
+- Deploy to Render.com, Railway.app, or DigitalOcean
+- Get a permanent URL for 24/7 availability
+
+## Challenges & Solutions
+
+**Challenge: Both Players Respawning on Hit**
+
+Initially, when one player got hit, both players would respawn due to poor event handling. The fix was ensuring only the victim receives the `died` event, while the shooter gets `scored`.
+
+**Challenge: Opponent Not Visible After Match**
+
+Game state wasn't properly initialized from URL parameters. The solution was parsing `gameId` and `playerNumber` from the URL query string on page load.
+
+**Challenge: Shots Not Registering Across Network**
+
+Server wasn't broadcasting `opponentShoot` events properly. Added explicit event relay to ensure both clients receive shooting notifications.
+
+**Challenge: Bullet Ownership Confusion**
+
+Both players were detecting hits with all bullets. Added `isMyBullet` flag to ensure only the shooter's client detects their own bullet hits.
+
+## Performance Optimizations
+
+To keep the game running smoothly at 60 FPS:
+
+- **Object pooling for bullets** - Reuse 50 sphere meshes instead of creating/destroying
+- **Throttled position updates** - Send player position at 60Hz, not every frame
+- **Efficient collision detection** - Octree spatial partitioning reduces checks by 90%+
+- **Delta compression** - Only send position/rotation deltas (future enhancement)
+
+## What I Learned
+
+- **WebSockets are fast** - Sub-100ms latency makes real-time gameplay feel responsive
+- **Client-side prediction matters** - Even small delays feel sluggish without prediction
+- **Visual polish sells the experience** - The game mechanics are simple, but the UI makes it feel premium
+- **Browser games are viable** - With modern APIs, you don't need native apps for competitive gaming
+- **Security is hard** - Client-side hit detection is vulnerable to cheating—server validation is essential
+
+## Future Enhancements
+
+The roadmap for V2 includes:
+
+- **Server-side hit validation** - Prevent client-side manipulation
+- **Client-side prediction** - Reduce perceived latency
+- **Lag compensation** - Rewind player positions to account for ping
+- **Multiple game modes** - Team Deathmatch, Free-for-All, Capture the Flag
+- **Weapon variety** - Different guns with unique behaviors
+- **Leaderboards** - Global rankings and seasonal competitions
+- **Spectator mode** - Watch matches in progress
+- **Mobile support** - Touch controls for phones and tablets
+
+## Try It Yourself
+
+The entire project is open-source and runs locally in minutes:
+
+```bash
+# Clone the project
+cd FPS
+
+# Install dependencies
+npm install
+
+# Start the server
+npm start
+
+# Open browser
+open http://localhost:3000/login.html
+```
+
+The codebase is structured for learning:
+- Single-file server (`server.js`) - Easy to understand the full flow
+- Vanilla JavaScript - No framework magic, just ES6 modules
+- Documented game mechanics - Comments explain the physics and logic
+
+## Conclusion
+
+Building Full Rubber Jacket taught me that browser-based multiplayer games are not only feasible—they can feel competitive and polished. The combination of Three.js for graphics, WebSockets for networking, and thoughtful UX design creates an experience that rivals native games.
+
+The best part? Anyone with a browser can play. No downloads, no installations, no platform restrictions. Just share a URL and start fragging.
+
+Whether you're learning game development, exploring WebSockets, or just want to understand real-time multiplayer architecture, this project demonstrates that you don't need a massive game engine to build something fun and functional.
+
+Try it, hack it, break it, improve it—the code is yours to explore.
