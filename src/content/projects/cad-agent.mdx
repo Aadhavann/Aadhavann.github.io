@@ -1,0 +1,288 @@
+---
+title: 'CAD Agent: AI-Powered 3D Modeling with Natural Language'
+description: 'Teaching Google Gemini to generate parametric CAD code from simple text prompts using few-shot learning'
+pubDate: 'Nov 25 2025'
+heroImage: '../../assets/cad-agent.png'
+---
+
+I needed a custom mounting bracket for my 3D printer. Nothing fancy—just an L-shaped piece with a few holes. But opening CAD software, remembering the interface, sketching, extruding, and constraining felt like overkill for something so simple. What if I could just describe it in plain English and get the code instantly?
+
+That's when I built CAD Agent—a system that takes natural language descriptions and generates parametric 3D modeling code using Google's Gemini 2.0 and CadQuery. No GUI, no clicking, just: "Create an L-bracket, 30mm tall with mounting holes" and you get working Python code.
+
+## The Problem: CAD Software Has a Steep Learning Curve
+
+Traditional CAD software like Fusion 360, SolidWorks, or FreeCAD are incredibly powerful but have significant friction:
+
+- **Cognitive overhead** - You need to remember UI patterns, keyboard shortcuts, and workflows
+- **Time-consuming for simple parts** - A basic bracket can take 5-10 minutes of clicking
+- **Not automatable** - Can't easily script variations or batch-generate parts
+- **Difficult to version control** - Binary files don't diff well in git
+
+Code-based CAD libraries like CadQuery solve some of these issues by letting you define models in Python, making them version-controllable and automatable. But there's still a learning curve—you need to know the API, understand coordinate systems, and mentally translate your design into code.
+
+## Why CadQuery + AI Makes Sense
+
+**CadQuery** is a Python library for parametric 3D modeling. It uses a fluent API where you chain operations:
+
+```python
+result = (cq.Workplane("XY")
+    .box(50, 30, 3)
+    .faces(">Z")
+    .circle(3)
+    .cutThruAll()
+)
+```
+
+This creates a 50×30×3mm plate with a hole through it. The code is readable, version-controllable, and reproducible. It's perfect for programmatic generation because:
+
+- **Syntax is consistent** - Predictable patterns AI can learn
+- **Operations are chainable** - Natural for sequential descriptions
+- **Documentation is clear** - Well-defined method signatures
+- **Output is deterministic** - Same code always produces same model
+
+## The Architecture: Few-Shot Learning
+
+The system uses a straightforward approach: **few-shot prompting**. I give the AI several examples of natural language prompts and their corresponding CadQuery code, then ask it to generate code for a new prompt.
+
+### The Prompt Structure
+
+```python
+instruction = """You are an expert assistant helping generate Python code
+for 3D modeling using the CadQuery library. Generate only the Python code
+based on the user's request. Make sure the final object is assigned to a
+variable named 'result'."""
+
+examples = """
+User: Create a 10x10x10 mm cube.
+Assistant:
+import cadquery as cq
+result = cq.Workplane("XY").box(10, 10, 10)
+
+User: Make a solid cylinder with radius 5 and height 20.
+Assistant:
+import cadquery as cq
+result = cq.Workplane("XY").cylinder(20, 5)
+
+User: Create a 20x20x5 block and cut a hole of radius 3 through the center.
+Assistant:
+import cadquery as cq
+result = (cq.Workplane("XY")
+    .box(20, 20, 5)
+    .faces(">Z")
+    .workplane()
+    .circle(3)
+    .cutThruAll()
+)
+"""
+
+user_request = "A plate 50mm long, 30mm wide, and 3mm thick with four 3mm
+diameter holes, one in each corner, 5mm inset from the edges"
+
+final_prompt = f"""{instruction}
+
+Here are some examples:
+{examples}
+
+Now, fulfill this request:
+User: {user_request}
+Assistant:
+"""
+```
+
+### Why This Works
+
+Gemini 2.0 Flash recognizes the pattern:
+1. Each example shows a design description → code mapping
+2. The examples teach the API syntax (Workplane, box, circle, etc.)
+3. The examples demonstrate common patterns (creating shapes, cutting holes, positioning features)
+4. The model generalizes to new requests that follow similar patterns
+
+## The Code Execution Pipeline
+
+Once the AI generates code, we need to execute it safely and display the result:
+
+### Step 1: Clean the Generated Code
+
+AI models often wrap code in markdown blocks. We strip these:
+
+```python
+def cleanCode(uncleaned_code_text):
+    cleaned_code_text = uncleaned_code_text.strip()
+
+    if cleaned_code_text.startswith("```python"):
+        cleaned_code_text = cleaned_code_text[len("```python"):].strip()
+    elif cleaned_code_text.startswith("```"):
+        cleaned_code_text = cleaned_code_text[len("```"):].strip()
+
+    if cleaned_code_text.endswith("```"):
+        cleaned_code_text = cleaned_code_text[:-len("```")].strip()
+
+    return cleaned_code_text
+```
+
+### Step 2: Execute in Isolated Scope
+
+We use Python's `exec()` with a controlled scope to prevent namespace pollution:
+
+```python
+def execute_and_display(generated_python_code):
+    execution_scope = {'cq': cq}  # Pre-populate with cadquery
+
+    try:
+        exec(generated_python_code, globals(), execution_scope)
+        cadquery_object = execution_scope.get('result')
+
+        if cadquery_object and isinstance(cadquery_object, cq.Workplane):
+            display(cadquery_object)  # jupyter-cadquery renders it as 3D
+        else:
+            print("Error: 'result' variable not found or invalid")
+
+    except Exception as e:
+        print(f"Error: {e}")
+        traceback.print_exc()
+```
+
+The key decisions here:
+- **Sandboxed execution** - Only `cq` module is available, limiting attack surface
+- **Result validation** - We check that `result` is actually a Workplane object
+- **Error handling** - Full traceback helps debug malformed code
+
+### Step 3: 3D Visualization
+
+In Jupyter notebooks with `jupyter-cadquery`, the `display()` function renders the 3D model with an interactive viewer. Users can rotate, zoom, and inspect the generated part.
+
+## Example: The Mounting Plate
+
+For the mounting plate example:
+
+**Input:**
+> "A plate 50mm long, 30mm wide, and 3mm thick with four 3mm diameter holes, one in each corner, 5mm inset from the edges"
+
+**Generated Code:**
+```python
+import cadquery as cq
+
+result = (cq.Workplane("XY")
+    .box(50, 30, 3)
+    .faces(">Z")
+    .workplane()
+    .pushPoints([
+        (20, 10),   # Top right
+        (-20, 10),  # Top left
+        (20, -10),  # Bottom right
+        (-20, -10)  # Bottom left
+    ])
+    .circle(1.5)
+    .cutThruAll()
+)
+```
+
+**What the AI got right:**
+- Correct dimensions (50×30×3mm)
+- Four holes, each 3mm diameter (radius 1.5mm)
+- Proper positioning (5mm inset means 20mm and 10mm from center)
+- Efficient use of `pushPoints()` to place all holes at once
+- Proper operation chaining for clarity
+
+## Tech Stack
+
+| Component | Technology | Why |
+|-----------|-----------|-----|
+| AI Model | Gemini 2.0 Flash | Fast, cost-effective, strong code generation |
+| CAD Library | CadQuery | Python-based, parametric, version-controllable |
+| Platform | Jupyter Notebook | Interactive, visual feedback, rapid iteration |
+| Visualization | jupyter-cadquery | 3D rendering in browser via ThreeJS |
+| API Client | google_genai | Official Python SDK for Gemini API |
+
+## Challenges & Solutions
+
+### Challenge 1: Coordinate System Understanding
+
+AI models sometimes confuse coordinate systems. CadQuery uses:
+- `"XY"` - Top-down view (default)
+- `"XZ"` - Front view
+- `"YZ"` - Side view
+
+**Solution:** Include examples demonstrating different workplanes and explain the coordinate system in the instruction prompt.
+
+### Challenge 2: Complex Positioning
+
+Placing features at specific locations requires math (centering, offsets). The AI needs to calculate coordinates.
+
+**Solution:** Add examples with explicit coordinate calculations in comments:
+```python
+# For a 50mm plate, center is (0,0), so 5mm inset = (50/2 - 5, 30/2 - 5)
+.pushPoints([(20, 10), (-20, 10), (20, -10), (-20, -10)])
+```
+
+### Challenge 3: Ambiguous Descriptions
+
+"Add holes to the corners" - how many? What size? How far inset?
+
+**Solution:** The AI will ask clarifying questions or make reasonable assumptions based on examples. Better prompts get better results:
+- ✅ "Four M3-sized holes (3mm diameter) in each corner, 5mm from edges"
+- ❌ "Some holes"
+
+### Challenge 4: Code Validation
+
+Not all generated code is valid Python or CadQuery.
+
+**Solution:** Execute in try-catch block with detailed error reporting. If execution fails, the error message helps users debug or refine their prompt.
+
+## What I Learned
+
+**Few-shot learning is surprisingly powerful.** With just 3-5 examples, Gemini could generalize to complex designs. The key is high-quality examples that demonstrate patterns.
+
+**API design matters for AI.** CadQuery's fluent, chainable API is naturally suited for AI generation. Compare to OpenSCAD's more imperative style—CadQuery's declarative approach maps better to natural language.
+
+**Error handling is critical.** When generating code programmatically, you need robust validation. About 10% of generated code had syntax errors or logic issues—catching these gracefully is essential.
+
+**Context windows enable this.** Gemini's large context window (1M tokens) means we can include extensive examples, documentation, and error messages without hitting limits.
+
+## Limitations & Future Work
+
+**Current Limitations:**
+- No visual feedback during prompt refinement
+- Can't handle extremely complex assemblies
+- No collision detection or engineering validation
+- No integration with manufacturing workflows (CNC, 3D printing)
+
+**Future Enhancements:**
+- **Iterative refinement** - "Make the plate 10mm longer"
+- **Visual preview** - Generate and render models in real-time
+- **Assembly support** - "Create a box with a hinged lid"
+- **Engineering constraints** - "Ensure holes fit M3 screws with clearance"
+- **Export formats** - Automatically convert to STEP, STL, or GCODE
+- **Web interface** - Make it accessible without Jupyter notebooks
+- **Multi-modal input** - Upload sketch images, describe modifications
+
+## Real-World Applications
+
+This approach has practical use cases:
+
+**Rapid Prototyping**
+> Designers can iterate on parts quickly by tweaking text descriptions instead of re-modeling
+
+**Educational Tools**
+> Students learning CAD can see how descriptions translate to code, understanding parametric modeling concepts
+
+**Automation & Batch Processing**
+> Generate hundreds of variations (different sizes, hole patterns) by programmatically varying prompts
+
+**Accessibility**
+> Enables 3D modeling for people who struggle with traditional CAD interfaces
+
+## Conclusion
+
+CAD Agent demonstrates that AI code generation isn't just for web apps—it works for specialized domains like parametric CAD when you:
+
+1. Choose libraries with clean, learnable APIs
+2. Provide high-quality few-shot examples
+3. Validate and sandbox generated code
+4. Design clear prompts that reduce ambiguity
+
+The barrier to creating custom 3D parts just dropped significantly. Instead of spending 20 minutes in a CAD GUI, you can describe what you want in 20 seconds and get code you can version, modify, and manufacture.
+
+As AI models improve their spatial reasoning and code generation, tools like this will become more powerful. Imagine describing complex assemblies, having the AI optimize for printability, or even generating toolpaths for CNC machines—all from natural language.
+
+The code is simple, the idea is powerful, and the future of CAD might be conversational.

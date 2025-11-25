@@ -1,0 +1,345 @@
+---
+title: 'NeuroTwin: AI-Augmented Sensor Fusion Digital Twin'
+description: 'Building a physics-informed ML system that combines real-time simulation, multi-sensor fusion, and LLM-powered diagnostics'
+pubDate: 'Nov 25 2025'
+heroImage: '../../assets/neurotwin.png'
+---
+
+Drones crash. Autonomous vehicles miscalculate. Why? Often, it's not the sensors or the physics model—it's the gap between them. Sensors drift, physics approximates, and by the time you realize something's wrong, you're watching your hardware tumble into a lake. I wanted to build a system that could bridge this gap: a digital twin that combines real-time physics simulation with machine learning corrections, validated by multiple sensors, and diagnosed by an AI advisor that suggests experiments to improve performance.
+
+That's NeuroTwin—a research platform demonstrating hybrid ML + physics sensor fusion with LLM-powered experiment advisory. It simulates a moving platform with IMU, LiDAR, and Radar sensors, uses PyTorch to correct physics drift, and employs an LLM to analyze performance metrics and suggest safe experiments.
+
+## The Problem: Sensor Fusion Is Hard
+
+Building robust state estimation systems requires solving several challenges simultaneously:
+
+**Sensor Drift and Bias**
+Real sensors don't give you ground truth. IMUs accumulate bias over time. GPS has multipath errors. LiDAR gets noisy in rain. No single sensor is reliable enough on its own.
+
+**Physics Models Are Approximations**
+Even with perfect sensor data, physics simulators use simplified models. They assume constant drag coefficients, ignore turbulence, and use discrete time steps. Real-world dynamics are messier.
+
+**Unknown Unknowns**
+When your autonomous system performs poorly, what do you change? Increase sensor noise? Adjust drag coefficients? Add wind disturbances? Manual tuning is slow and often misses the actual problem.
+
+**Safety-Critical Validation**
+You can't just let an AI decide to increase motor power by 200% or disable safety checks. Any automated advisor needs hard limits and human approval.
+
+## Why Digital Twins + ML + LLMs Make Sense
+
+Traditional approaches treat these problems separately:
+- Kalman filters for sensor fusion
+- Physics engines for simulation
+- Manual tuning for parameter optimization
+
+NeuroTwin combines all three with modern AI:
+
+**Physics Simulation (Taichi)**
+GPU-accelerated 2D dynamics with gravity, drag, and wind. Fast enough for real-time, accurate enough for meaningful predictions.
+
+**Multi-Sensor Fusion**
+IMU (acceleration + gyro), LiDAR (depth scanning), and Radar (range measurements). Each has different noise characteristics and failure modes.
+
+**ML Residual Correction (PyTorch)**
+A neural network learns to correct the physics model's errors by observing sensor data. It doesn't replace physics—it augments it, learning the residual between predicted and actual state.
+
+**LLM Advisory System**
+An AI reads system logs, identifies anomalies, and suggests parameter changes to improve performance. All suggestions are validated and clamped to safe ranges before human review.
+
+## Architecture: Four-Layer Design
+
+The system is organized into distinct layers, each with clear responsibilities:
+
+### Layer 1: Physics Simulation
+
+```python
+# Taichi-accelerated physics kernel
+@ti.kernel
+def step_physics(dt: float):
+    v = ti.Vector([state[2], state[3]])  # velocity
+    a = ti.Vector([0.0, -9.81])  # gravity
+    a += wind - drag * v  # environment forces
+
+    v += a * dt  # semi-implicit Euler
+    pos = ti.Vector([state[0], state[1]])
+    pos += v * dt
+
+    state[0], state[1] = pos[0], pos[1]
+    state[2], state[3] = v[0], v[1]
+```
+
+This runs at 60Hz, providing baseline state estimates. But physics alone isn't enough—sensor noise and model inaccuracies create drift.
+
+### Layer 2: Sensor Stack
+
+Three complementary sensors provide different views of the system state:
+
+**IMU (Inertial Measurement Unit)**
+```python
+def sample_imu(true_state):
+    accel = true_state['acceleration'] + imu_bias
+    accel += np.random.normal(0, imu_noise_std, 2)
+
+    gyro = true_state['angular_velocity']
+    gyro += np.random.normal(0, gyro_noise_std)
+
+    return {'accel': accel, 'gyro': gyro}
+```
+
+**LiDAR (Sparse Depth Scanning)**
+```python
+def sample_lidar(position, obstacles):
+    ranges = []
+    for angle in np.linspace(-135, 135, 16):  # 16-ray scan
+        hit_distance = raycast(position, angle, obstacles)
+        if np.random.random() > dropout_rate:
+            hit_distance += np.random.normal(0, lidar_noise_std)
+            ranges.append(hit_distance)
+    return ranges
+```
+
+**Radar (Range to Fixed Points)**
+```python
+def sample_radar(position, reflectors):
+    ranges = []
+    for reflector in reflectors:
+        distance = np.linalg.norm(position - reflector)
+        distance += np.random.normal(0, radar_noise_std)
+        ranges.append(distance)
+    return ranges
+```
+
+### Layer 3: ML Residual Correction
+
+The physics model makes predictions. The sensors observe reality. The residual model learns the difference.
+
+**Architecture:**
+```python
+class ResidualModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, 4)  # Δx, Δy, Δvx, Δvy
+
+    def forward(self, x):
+        # x contains: physics state + sensor history (3 timesteps)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        correction = torch.tanh(self.fc3(x))  # bounded corrections
+        return correction
+```
+
+**Training Loop:**
+```python
+# Generate synthetic training data
+for episode in range(80):
+    physics_states = simulate_trajectory()
+    sensor_data = add_sensor_noise(physics_states)
+
+    for t in range(len(physics_states) - 1):
+        input_features = build_feature_vector(
+            physics_states[t],
+            sensor_data[t-2:t]
+        )
+        target = physics_states[t+1] - physics_states[t]
+
+        prediction = model(input_features)
+        loss = mse_loss(prediction, target) + l2_regularization(model)
+        loss.backward()
+        optimizer.step()
+```
+
+Typical improvement: 45% RMSE reduction (0.15m → 0.08m).
+
+### Layer 4: LLM Advisory System
+
+After running a simulation, the system can query an LLM for diagnostics:
+
+```python
+def generate_advice(metrics_log):
+    prompt = f"""
+You are analyzing a sensor fusion digital twin system.
+
+Current metrics:
+- RMSE (0.1s horizon): {metrics['rmse_short']:.3f}m
+- IMU bias: {metrics['imu_bias']:.2f} m/s²
+- LiDAR dropout rate: {metrics['lidar_dropout']:.1%}
+- Wind: ({metrics['wind_x']:.1f}, {metrics['wind_y']:.1f}) m/s
+
+The system is performing {'well' if metrics['rmse_short'] < 0.1 else 'poorly'}.
+
+Suggest up to 3 experiments to improve performance. Format:
+{{
+  "summary": "Brief status assessment",
+  "experiments": [
+    {{"param": "parameter_name", "value": new_value, "reason": "explanation"}}
+  ],
+  "confidence": 0.8
+}}
+"""
+
+    response = llm_client.generate(prompt)
+    suggestions = parse_json(response)
+
+    # Safety validation
+    safe_suggestions = []
+    for exp in suggestions['experiments']:
+        if validate_param_range(exp['param'], exp['value']):
+            safe_suggestions.append(exp)
+
+    return safe_suggestions
+```
+
+All suggestions are:
+- **Advisory only** - no automatic actuation
+- **Validated** - clamped to safe ranges in `safety.py`
+- **Require manual approval** - displayed to user before application
+
+## Tech Stack
+
+| Component | Technology | Why |
+|-----------|-----------|-----|
+| Physics Engine | Taichi | GPU-accelerated compute shaders, 10x faster than NumPy |
+| ML Framework | PyTorch | Industry standard, great debugging, CUDA support |
+| Web Interface | Streamlit | Rapid prototyping, live visualization, zero frontend code |
+| LLM Integration | OpenAI/Anthropic APIs | State-of-the-art reasoning, structured output support |
+| Data Storage | NumPy/NPZ | Simple, fast, sufficient for synthetic datasets |
+| Visualization | Matplotlib | Real-time plotting, trajectory overlays, sensor views |
+
+## The Interactive Demo Experience
+
+The Streamlit UI provides a complete demonstration environment:
+
+**One-Click Example Playback**
+```python
+if st.button("📋 Run Example"):
+    # Load pre-recorded episode
+    data = np.load('examples/sample_run.npz')
+    st.session_state['trajectory'] = data['states']
+    st.session_state['metrics'] = data['metrics']
+```
+
+**Live Simulation Control**
+```python
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("▶️ Start"):
+        run_simulation()
+
+with col2:
+    gravity = st.slider("Gravity (m/s²)", 5.0, 15.0, 9.81)
+
+with col3:
+    wind_x = st.slider("Wind X (m/s)", -2.0, 2.0, 0.0)
+```
+
+**AI Advisor Chat**
+```python
+if st.button("🔍 Get AI Advice"):
+    with st.spinner("Analyzing performance..."):
+        advice = get_llm_advice(metrics_history)
+
+    st.markdown(f"**Summary:** {advice['summary']}")
+
+    for i, exp in enumerate(advice['experiments'], 1):
+        st.markdown(f"**{i}. {exp['param']}** → {exp['value']}")
+        st.caption(exp['reason'])
+
+        if st.button(f"Apply Experiment {i}"):
+            if confirm_safety(exp):
+                apply_parameter_change(exp)
+                st.success("Applied! Restarting simulation...")
+```
+
+## Challenges & Solutions
+
+### Challenge 1: Real-Time Performance
+
+Simulating physics, sampling 3 sensors, and running ML inference at 60Hz is computationally intensive.
+
+**Solution:** Taichi GPU kernels for physics + PyTorch CUDA inference. Moved sensor sampling to background threads. Result: 60Hz on mid-range laptops.
+
+### Challenge 2: Training Data Quality
+
+How do you train a residual model when you don't have "ground truth" errors?
+
+**Solution:** Generate synthetic data with known perturbations. Run physics with perfect parameters, then add sensor noise and environmental randomness. The difference between clean and noisy trajectories becomes training labels.
+
+### Challenge 3: LLM Hallucinations
+
+Early experiments had the LLM suggesting nonsense parameters like "set gravity to -50 m/s²" or "increase noise to 1000%."
+
+**Solution:** Three-layer defense:
+1. **Structured prompts** - JSON output format with clear constraints
+2. **Safety validation** - `safety.py` clamps all values to physically valid ranges
+3. **Mock mode** - Default to canned responses, real LLM is optional
+
+### Challenge 4: Interpretability
+
+When the ML model makes corrections, how do you know it's helping vs. overfitting?
+
+**Solution:** Track multiple metrics over time:
+- Short-horizon RMSE (0.1s, 0.5s) - measures prediction accuracy
+- IMU bias estimation - checks if corrections align with known sensor faults
+- Ablation tests - compare physics-only vs. physics+ML performance
+
+## What I Learned
+
+**Hybrid models outperform pure approaches.** Neither pure physics nor pure ML works as well as combining them. Physics provides structure and interpretability; ML handles the messy real-world deviations.
+
+**Safety must be designed in, not bolted on.** The LLM advisory system could easily suggest dangerous parameters. Hard constraints in code prevent this—no amount of prompting is sufficient.
+
+**Synthetic data is underrated.** For research projects, generating perfect training data is faster and more controlled than collecting real sensor data. You can create edge cases on demand.
+
+**Interactive demos matter.** Jupyter notebooks are fine for development, but a polished Streamlit app makes the project accessible to non-technical audiences. The one-click demo flow was crucial for showcasing the system.
+
+## Limitations & Future Work
+
+**Current Limitations:**
+- 2D simulation only (real robotics is 3D)
+- Simplified physics (no rigid body dynamics, collisions)
+- Synthetic sensors (real hardware has more complex failure modes)
+- Single agent (multi-agent scenarios are more interesting)
+
+**Future Enhancements:**
+- **3D dynamics** - Full 6-DOF state estimation
+- **Real sensor integration** - ROS bag playback support
+- **Kalman filter baseline** - Compare against traditional methods
+- **Distributed simulation** - Multi-agent coordination scenarios
+- **Reinforcement learning** - Closed-loop control with learned policies
+- **Uncertainty quantification** - Provide confidence intervals on predictions
+- **Web deployment** - Eliminate local setup, run entirely in browser
+
+## Real-World Applications
+
+This approach has practical implications beyond academic demos:
+
+**Autonomous Vehicle Testing**
+Run thousands of simulated scenarios to validate sensor fusion algorithms before road testing. The LLM advisor could suggest which scenarios expose weaknesses.
+
+**Drone Fleet Management**
+Monitor real drone telemetry against digital twin predictions. Anomalies indicate potential failures before they become critical.
+
+**Manufacturing Digital Twins**
+Track production line machinery state using multiple sensors. ML corrects for wear and calibration drift over time.
+
+**Education & Research**
+Teaching tool for sensor fusion, physics-informed ML, and digital twin concepts. Modular codebase makes it easy to extend for thesis projects.
+
+## Conclusion
+
+NeuroTwin demonstrates that modern AI tools—physics engines, neural networks, and large language models—can be combined into systems that are more capable than any single approach. The key insights:
+
+1. **Physics provides structure** - Don't throw away domain knowledge
+2. **ML handles complexity** - Learn corrections, not entire models
+3. **Multiple sensors reduce uncertainty** - Complementary data is powerful
+4. **LLMs can advise, not control** - Keep humans in the loop for critical decisions
+5. **Safety layers are non-negotiable** - Validate everything, trust nothing
+
+The code is modular, documented, and ready to extend. Whether you're learning about digital twins, building autonomous systems, or exploring physics-informed ML, NeuroTwin provides a complete reference implementation.
+
+As AI models improve and physics simulations get faster, the gap between digital twins and reality will shrink. We're moving toward a future where every physical system has a constantly-updated digital counterpart, predicting failures before they happen and optimizing performance in real-time.
+
+The future of robotics isn't just smarter algorithms—it's systems that understand physics, learn from data, and know when to ask for help.

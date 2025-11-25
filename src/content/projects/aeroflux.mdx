@@ -1,0 +1,502 @@
+---
+title: 'AeroFlux: Real-Time Aerodynamics Visualizer'
+description: 'Building an interactive web app to visualize airflow, lift, and drag over 2D airfoils with real-time physics simulation'
+pubDate: 'Nov 25 2025'
+heroImage: '../../assets/aeroflux.png'
+---
+
+I was reading about wing design when I stumbled across the NACA airfoil designation system. NACA 2412, NACA 0012, NACA 6409—just four digits that encode an entire wing shape. But looking at the numbers told me nothing. What does "2412" actually look like? How does air flow around it? Why does changing the angle by a few degrees matter so much?
+
+I could fire up XFOIL or run a CFD simulation, but those take minutes to hours. I could sketch it in CAD, but that doesn't show the airflow. What I wanted was instant feedback: drag a slider, see the streamlines change, watch lift and drag respond in real-time. That's when I built AeroFlux—a web-based aerodynamics visualizer that renders airflow, pressure distributions, and force vectors in under 200 milliseconds.
+
+## The Problem: Aerodynamics Is Hard to Visualize
+
+Understanding how wings generate lift requires seeing three things simultaneously:
+- **Geometry** - The shape of the airfoil
+- **Flow field** - How air moves around it
+- **Forces** - The resulting lift and drag vectors
+
+Traditional approaches fall short:
+
+**Computational Fluid Dynamics (CFD)**
+High-fidelity solvers like OpenFOAM or ANSYS Fluent can take hours to converge on a single simulation. They're incredibly accurate but completely impractical for exploration and learning.
+
+**Wind Tunnel Testing**
+The gold standard for real data, but requires physical models, expensive equipment, and access to a lab. Not feasible for quick "what-if" experiments.
+
+**Textbook Diagrams**
+Static images show one configuration at one angle of attack. They're helpful but don't convey the dynamic nature of aerodynamics—how small changes in angle dramatically affect forces.
+
+**Existing Visualizers**
+Tools like JavaFoil exist but are often desktop apps with dated UIs, limited interactivity, or require installation. Nothing felt truly immediate and exploratory.
+
+## Why Real-Time Matters
+
+Aerodynamics education suffers from a disconnect between equations and intuition. You learn that:
+
+```
+Lift = 0.5 × ρ × V² × A × Cl
+```
+
+But what does that *mean*? How does Cl (lift coefficient) change with angle of attack? Why does a cambered airfoil generate lift even at zero degrees? When does the airfoil stall?
+
+Interactive visualization bridges this gap. When you can adjust angle of attack with a slider and immediately see:
+- Streamlines curve more sharply
+- Pressure drops on the upper surface
+- Lift increases linearly, then suddenly drops at stall
+- Drag begins to dominate
+
+...the physics becomes intuitive, not just mathematical.
+
+## Architecture: Fast Physics + Canvas Rendering
+
+The system is deliberately minimal: FastAPI backend for physics calculations, vanilla JavaScript frontend for visualization. No frameworks, no complexity, just fast iteration loops.
+
+### Backend: Simplified Aerodynamics Solver
+
+The backend handles three computational tasks:
+
+**1. NACA Airfoil Generation**
+
+NACA 4-digit airfoils encode:
+- First digit: Maximum camber as % of chord
+- Second digit: Location of maximum camber (tenths of chord)
+- Last two digits: Maximum thickness as % of chord
+
+```python
+def generate_naca_4digit(naca_code: str, num_points: int = 100):
+    # Parse NACA parameters
+    m = int(naca_code[0]) / 100.0  # Max camber
+    p = int(naca_code[1]) / 10.0   # Camber location
+    t = int(naca_code[2:4]) / 100.0  # Thickness
+
+    # Cosine spacing for better leading edge resolution
+    beta = np.linspace(0, np.pi, num_points)
+    x = (1 - np.cos(beta)) / 2
+
+    # Thickness distribution (NACA formula)
+    yt = 5 * t * (0.2969 * np.sqrt(x) - 0.1260 * x -
+                  0.3516 * x**2 + 0.2843 * x**3 - 0.1015 * x**4)
+
+    # Camber line
+    yc = np.where(x < p,
+                  m / p**2 * (2 * p * x - x**2),
+                  m / (1-p)**2 * ((1-2*p) + 2*p*x - x**2))
+
+    # Combine upper and lower surfaces
+    return x_coords, y_coords
+```
+
+The NACA equations are surprisingly elegant—a 5-term polynomial for thickness, a piecewise quadratic for camber. Cosine spacing ensures higher resolution at the leading edge where curvature is sharpest.
+
+**2. Lift and Drag Estimation**
+
+Rather than solving the full Navier-Stokes equations (computationally expensive), I use thin airfoil theory with practical corrections:
+
+```python
+def estimate_cl_cd(angle_of_attack, reynolds_number,
+                   max_thickness, max_camber):
+    aoa_rad = np.deg2rad(angle_of_attack)
+
+    # Thin airfoil theory: Cl = 2π(α + α_camber)
+    alpha_eff = aoa_rad + max_camber * np.pi
+    cl_linear = 2 * np.pi * alpha_eff
+
+    # Stall model (simplified)
+    stall_angle = np.deg2rad(15)
+    if abs(aoa_rad) > stall_angle:
+        stall_factor = np.cos((aoa_rad - stall_angle) * 2)
+        cl = cl_linear * max(0.3, stall_factor)
+    else:
+        cl = cl_linear
+
+    # Drag components
+    cd_profile = 0.006 + 0.01 * max_thickness  # Friction + pressure
+    cd_induced = cl**2 / (np.pi * aspect_ratio * e)  # Induced drag
+    cd_separation = 0.5 * (abs(aoa_rad) - stall_angle)**2  # Stall drag
+
+    cd = cd_profile + cd_induced + cd_separation
+
+    return cl, cd
+```
+
+This isn't CFD-accurate but captures the essential physics:
+- Lift increases linearly with angle of attack
+- Camber adds effective angle of attack
+- Stall occurs around 15° with sudden lift loss
+- Drag has three components: profile (friction), induced (from lift), and separation (stall)
+
+For educational purposes and rapid exploration, this 50-200ms approximation is far more useful than a 2-hour high-fidelity simulation.
+
+**3. Flow Field Computation**
+
+To visualize streamlines and pressure, I compute a velocity field using potential flow approximations:
+
+```python
+class FlowField:
+    def compute_flow(self, airfoil_coords, velocity, aoa):
+        # Create grid
+        x_grid = np.linspace(-0.5, 1.5, 100)
+        y_grid = np.linspace(-0.8, 0.8, 80)
+        X, Y = np.meshgrid(x_grid, y_grid)
+
+        # Base freestream velocity
+        U_inf = velocity * np.cos(aoa_rad)
+        V_inf = velocity * np.sin(aoa_rad)
+
+        # Add velocity perturbations near airfoil (simplified doublet + vortex)
+        # This approximates circulation and thickness effects
+        U_total = U_inf + U_perturbation
+        V_total = V_inf + V_perturbation
+
+        # Pressure from Bernoulli equation
+        velocity_magnitude = np.sqrt(U_total**2 + V_total**2)
+        pressure_coefficient = 1 - (velocity_magnitude / velocity)**2
+
+        return pressure_coefficient, velocity_magnitude
+```
+
+This creates a 100×80 grid where each point has velocity and pressure values. The perturbations simulate the airfoil's influence—air speeds up over the curved upper surface (low pressure) and slows below (high pressure).
+
+### Frontend: Canvas-Based Real-Time Rendering
+
+The visualization pipeline runs entirely in the browser:
+
+**1. API Communication**
+
+```javascript
+class AeroFluxApp {
+    async runSimulation() {
+        const params = {
+            naca_code: this.params.naca_code,
+            angle_of_attack: this.params.angle_of_attack,
+            velocity: this.params.velocity,
+            density: this.params.density,
+            chord_length: this.params.chord_length
+        };
+
+        const response = await fetch('/api/simulate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(params)
+        });
+
+        const data = await response.json();
+        this.renderer.render(data);
+        this.updateTelemetry(data.telemetry);
+    }
+}
+```
+
+**2. Canvas Rendering Pipeline**
+
+The renderer draws layers in sequence:
+
+```javascript
+class FlowRenderer {
+    render(simulationData) {
+        this.clearCanvas();
+
+        // Layer 1: Pressure field (color-coded heatmap)
+        if (this.showPressure) {
+            this.drawPressureField(simulationData.flow_field.pressure);
+        }
+
+        // Layer 2: Streamlines (flow paths)
+        if (this.showStreamlines) {
+            simulationData.streamlines.forEach(line => {
+                this.drawStreamline(line);
+            });
+        }
+
+        // Layer 3: Background grid
+        this.drawGrid();
+
+        // Layer 4: Airfoil geometry
+        this.drawAirfoil(simulationData.airfoil);
+
+        // Layer 5: Force vectors
+        if (this.showForces) {
+            this.drawForceVectors(simulationData.forces);
+        }
+    }
+
+    drawStreamline(streamline) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(100, 150, 255, 0.6)';
+
+        for (let i = 0; i < streamline.x.length; i++) {
+            const [sx, sy] = this.worldToScreen(
+                streamline.x[i],
+                streamline.y[i]
+            );
+
+            if (i === 0) ctx.moveTo(sx, sy);
+            else ctx.lineTo(sx, sy);
+        }
+
+        ctx.stroke();
+
+        // Draw arrowhead at end
+        this.drawArrowhead(streamline);
+    }
+
+    worldToScreen(x, y) {
+        // Transform from world coordinates to canvas pixels
+        const sx = this.offsetX + x * this.scale;
+        const sy = this.offsetY - y * this.scale;  // Flip y-axis
+        return [sx, sy];
+    }
+}
+```
+
+**Key rendering decisions:**
+- **Pressure as hue**: Map pressure coefficient to color (blue = low pressure, red = high)
+- **Streamlines with arrows**: Show flow direction clearly
+- **Translucent airfoil**: Let you see pressure underneath
+- **Scaled force vectors**: Normalize to visible length but preserve relative magnitudes
+
+## Tech Stack Rationale
+
+| Component | Choice | Why |
+|-----------|--------|-----|
+| Backend | FastAPI | Async support, auto OpenAPI docs, Pydantic validation |
+| Physics | NumPy + SciPy | Vectorized operations, scientific computing primitives |
+| Frontend | Vanilla JS | Zero framework overhead, maximum performance |
+| Rendering | HTML5 Canvas | 2D graphics acceleration, 60fps capable |
+| Server | Uvicorn | ASGI server with hot-reload, production-ready |
+
+The entire stack is deliberately minimal. No React, no WebGL, no heavy dependencies. This keeps the application:
+- **Fast to load** - ~100KB total JavaScript
+- **Fast to render** - 60fps canvas drawing
+- **Fast to iterate** - No build process, just edit and refresh
+- **Easy to deploy** - Single Python process + static files
+
+## Interactive Features
+
+**Parameter Controls**
+- Angle of attack: -20° to +20° (watch stall behavior)
+- Velocity: 10-100 m/s (forces scale with V²)
+- Air density: 0.5-1.5 kg/m³ (simulates altitude)
+- Chord length: 0.1-10m (affects Reynolds number)
+
+**Airfoil Presets**
+- NACA 0012 (symmetric, no camber)
+- NACA 2412 (2% camber, general aviation)
+- NACA 4412 (4% camber, high lift)
+- NACA 6409 (6% camber, 9% thickness)
+- Custom input (enter any 4-digit code)
+
+**Visualization Toggles**
+- Streamlines (on/off)
+- Pressure field (on/off)
+- Force vectors (on/off)
+
+**Real-Time Telemetry**
+- Lift force (N)
+- Drag force (N)
+- L/D ratio (efficiency metric)
+- Reynolds number (flow regime)
+- Mach number (compressibility check)
+- Lift coefficient Cl
+- Drag coefficient Cd
+- Dynamic pressure
+
+**Keyboard Shortcuts**
+- Enter: Run simulation
+- Space: Toggle streamlines
+- P: Toggle pressure
+- F: Toggle forces
+- R: Reset to defaults
+
+## Challenges & Solutions
+
+### Challenge 1: Coordinate System Complexity
+
+Aerodynamics uses world coordinates (airfoil at origin, x right, y up). Canvas uses screen coordinates (top-left origin, x right, y down). Forces are in physical coordinates. Streamlines need interpolation between grid points.
+
+**Solution:** Centralized coordinate transformation:
+
+```javascript
+worldToScreen(x, y) {
+    return [
+        300 + x * 400,      // offsetX + scale
+        300 - y * 400       // offsetY - scale (flip y)
+    ];
+}
+
+screenToWorld(sx, sy) {
+    return [
+        (sx - 300) / 400,
+        (300 - sy) / 400
+    ];
+}
+```
+
+All drawing methods use `worldToScreen()`. All mouse interactions use `screenToWorld()`. Physics never sees screen coordinates.
+
+### Challenge 2: Streamline Generation
+
+Streamlines follow the velocity field, but the field is discrete (100×80 grid). How do you smoothly trace a curve through discrete data?
+
+**Solution:** Bilinear interpolation + adaptive step size:
+
+```python
+def generate_streamlines(velocity_field):
+    streamlines = []
+
+    # Start points distributed above and below airfoil
+    for y_start in np.linspace(-0.6, 0.6, 20):
+        x, y = -0.5, y_start  # Start upstream
+        path_x, path_y = [x], [y]
+
+        for step in range(300):  # Max 300 points per line
+            # Bilinear interpolation for velocity at (x, y)
+            u, v = interpolate_velocity(velocity_field, x, y)
+
+            # Euler integration with adaptive step
+            speed = np.sqrt(u**2 + v**2)
+            dt = 0.01 / max(speed, 0.1)  # Smaller steps in fast flow
+
+            x += u * dt
+            y += v * dt
+
+            # Stop if out of bounds or inside airfoil
+            if not in_bounds(x, y) or inside_airfoil(x, y):
+                break
+
+            path_x.append(x)
+            path_y.append(y)
+
+        streamlines.append({'x': path_x, 'y': path_y})
+
+    return streamlines
+```
+
+This produces smooth curves that accurately follow the flow, with higher resolution where velocity is high.
+
+### Challenge 3: Performance vs. Accuracy
+
+A 200×200 grid would give smoother visualization but take 4× longer to compute. Too many streamlines clutter the display. Too few look sparse.
+
+**Solution:** Profiling-driven optimization:
+- Grid: 100×80 (sweet spot for &lt;200ms compute)
+- Streamlines: 20 lines (visually rich without clutter)
+- Pressure sampling: Every 5th point (200× fewer pixels to draw)
+- Canvas updates: On-demand only (not continuous loop)
+
+Result: Feels instant at 50-200ms per simulation.
+
+### Challenge 4: Physics Simplifications
+
+Thin airfoil theory ignores viscosity, compressibility, and 3D effects. It's wrong for high angles, transonic speeds, and separated flow. But exact solutions are too slow for interactivity.
+
+**Solution:** Accept approximations but be explicit about limitations:
+- Document valid ranges (α &lt; 15°, Ma &lt; 0.3, Re &gt; 10⁵)
+- Add qualitative stall modeling (not accurate, but shows the concept)
+- Display Reynolds and Mach numbers so users know when assumptions break
+- Label it "educational visualizer" not "engineering tool"
+
+This sets correct expectations: it's for learning and exploration, not airfoil design.
+
+## What I Learned
+
+**Aerodynamics is geometrically simple but physically subtle.** The NACA equations are just polynomials, but understanding why those specific coefficients produce good airfoils requires deep fluid dynamics knowledge.
+
+**Real-time requires ruthless approximation.** Every millisecond counts. Profile everything, question every loop, vectorize aggressively. The difference between elegant and performant code is knowing which operations dominate runtime.
+
+**Visualization design is half the project.** Choosing colors, scales, transparencies, and drawing order matters enormously for clarity. A technically correct visualization that's hard to parse fails its purpose.
+
+**Canvas API is surprisingly powerful.** With proper use of transforms, compositing modes, and path operations, you can build rich visualizations without WebGL complexity.
+
+**Interactive learning is transformative.** Watching lift increase as you drag the angle slider teaches more in 30 seconds than reading equations for 30 minutes.
+
+## Limitations & Future Work
+
+**Current Limitations:**
+- 2D only (no swept wings, tapers, 3D effects)
+- Inviscid flow (boundary layer effects approximated)
+- Steady-state (no time-dependent vortex shedding)
+- Low-speed (compressibility ignored above Mach 0.3)
+- Simplified stall model (real separation is more complex)
+
+**Future Enhancements:**
+
+**Near-term:**
+- Export simulation data (CSV/JSON)
+- Parameter sweep mode (animate angle from -20° to +20°)
+- Compare multiple airfoils side-by-side
+- Additional NACA families (5-digit, 6-series)
+
+**Medium-term:**
+- XFoil integration (accurate panel method solver)
+- Custom airfoil upload (coordinate files)
+- Multi-element airfoils (flaps, slats)
+- Polar plots (Cl vs α, Cl vs Cd)
+
+**Long-term:**
+- 3D wing visualization with spanwise effects
+- Vortex shedding animation (von Kármán street)
+- Neural network predictor trained on CFD data
+- LLM explanations ("Why did lift drop at 16°?")
+- Real-time CFD with GPU compute shaders
+
+## Real-World Applications
+
+**Education**
+Aerospace engineering courses can use this to demonstrate:
+- How camber generates lift at zero angle
+- Why symmetric airfoils need angle of attack
+- The relationship between Cl and α
+- Stall behavior and angle of attack limits
+- The L/D ratio for glider design
+
+**Rapid Prototyping**
+RC aircraft designers can quickly test airfoil choices before committing to builds. Not accurate enough for production, but perfect for narrowing down candidates.
+
+**Public Engagement**
+Museums and science centers can deploy this on touchscreens. Visitors drag sliders, see immediate results, and develop intuition about flight.
+
+**Pre-CFD Screening**
+Before running expensive high-fidelity simulations, check if an idea is even worth pursuing. If AeroFlux shows terrible L/D, no need to waste compute time.
+
+## Deployment
+
+The app is production-ready:
+
+```bash
+# Docker deployment
+docker build -t aeroflux .
+docker run -p 8000:8000 aeroflux
+
+# Cloud platforms (Heroku, Railway, Fly.io)
+# Just need Python 3.10+ and requirements.txt
+
+# Static hosting for frontend
+# Backend API on serverless functions (AWS Lambda, Vercel Functions)
+```
+
+Self-contained, no databases, no authentication needed. Perfect for free-tier hosting.
+
+## Conclusion
+
+AeroFlux demonstrates that you don't need months of CFD work to build something useful. With:
+- A weekend of coding
+- Simplified physics models
+- Canvas rendering
+- Thoughtful UX design
+
+You can create an interactive tool that makes aerodynamics accessible. The key insights:
+
+1. **Real-time beats accuracy for learning** - 200ms approximations trump 2-hour exact solutions for education
+2. **Minimal stack maximizes performance** - Vanilla JS and Canvas are fast enough for smooth interaction
+3. **Visualization design matters as much as code** - Color choices, transparencies, and drawing order affect clarity
+4. **Approximations need guardrails** - Be explicit about limitations and valid operating ranges
+
+The project took two weeks from concept to deployment. It's been used by aerospace students, RC hobbyists, and curious engineers. The most common feedback: "I finally *get* how cambered airfoils work."
+
+That's the power of interactive visualization. You stop memorizing equations and start building intuition. You don't just know that Cl = 2πα—you *feel* it when you drag the angle slider and watch lift increase linearly until stall.
+
+The future of technical education isn't better textbooks. It's better tools for exploration—interactive, immediate, and intuitive. AeroFlux is one small example, but the approach generalizes: take complex physics, approximate ruthlessly, visualize beautifully, and make it real-time.
+
+Now when someone asks "What's a NACA 2412?", I don't point them to equations. I send them a URL where they can see it, twist it, break it, and understand it.
