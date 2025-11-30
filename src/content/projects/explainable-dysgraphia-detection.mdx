@@ -1,0 +1,391 @@
+---
+title: 'Making Black-Box Models Explainable: CAM vs SHAP for Medical AI'
+description: 'Building clinically interpretable AI using Class Activation Mapping to bridge CNN predictions with explainable handwriting analysis'
+pubDate: 'Nov 25 2025'
+heroImage: '../../assets/dysgraphia.png'
+---
+
+Deep learning models achieve impressive accuracy on medical imaging tasks. But when a CNN says "this child has dysgraphia," clinicians ask: "Why? Show me what you're seeing." Black-box predictions don't cut it in healthcare. You need explanations that align with clinical expertise.
+
+I built a system that combines CNN predictions with explainable AI techniques to detect dysgraphia in children's handwriting. Instead of using popular approaches like SHAP or LIME, I chose Class Activation Mapping (CAM)—and the results show why spatial attention maps matter more than feature importance scores for image-based diagnostics.
+
+This is the story of building the Explainable Dysgraphia Index (EDI), a system that provides both accurate predictions and clinically interpretable explanations.
+
+## The Problem: Accuracy Isn't Enough
+
+Medical AI faces a unique challenge: clinical adoption requires trust, and trust requires interpretability.
+
+**Black-Box CNNs**
+A ResNet can classify handwriting samples with 85%+ accuracy. But it can't explain *why* it thinks a child has dysgraphia. Occupational therapists need to see what the model is seeing—is it noticing baseline wobble? Irregular spacing? Inconsistent letter sizing?
+
+**Feature Importance Isn't Spatial**
+Traditional XAI methods like SHAP or LIME can tell you which features matter most. But for images, "feature importance" often means individual pixels or abstract latent dimensions. That doesn't map to clinical concepts like "letter spacing" or "baseline alignment."
+
+**Domain Expertise Gets Ignored**
+Occupational therapists have decades of validated handwriting assessment criteria: spacing irregularity, baseline wobble, character size variance, stroke width consistency. Effective AI should *augment* this expertise, not replace it with inscrutable predictions.
+
+## Why CAM Makes Sense for Medical Imaging
+
+Class Activation Mapping produces spatial heatmaps showing which regions of an image the CNN focuses on when making predictions. Unlike SHAP values or attention weights, CAM provides:
+
+**Spatial Localization**
+CAM highlights specific areas of the handwriting sample—"this wobbly baseline section" rather than "pixel 127 contributed 0.03 to the decision."
+
+**Clinical Alignment**
+The heatmap overlay lets clinicians visually verify whether the model is looking at the right features. If CAM highlights normal regions while ignoring actual letter malformations, you know something's wrong.
+
+**Feature Weighting**
+You can use CAM intensity values to weight traditional handwriting metrics, creating a hybrid approach that combines CNN pattern recognition with interpretable clinical features.
+
+**Multiple Implementations**
+Two main variants exist:
+- **Grad-CAM**: Uses gradients flowing into the final convolutional layer (faster, gradient-based)
+- **Score-CAM**: Uses forward passes with masked activations (slower, more stable, no gradients needed)
+
+## Architecture: Hybrid CNN + Explainable Features
+
+The EDI system combines three components:
+
+### Layer 1: CNN Classifier
+
+A standard image classification CNN (ResNet-18 or EfficientNet-B0) trained on handwriting samples:
+
+```python
+# Simplified training loop
+for epoch in range(50):
+    for images, labels in dataloader:
+        predictions = model(images)
+        loss = criterion(predictions, labels)
+
+        # Early stopping based on validation AUC
+        val_auc = compute_auc(model, val_loader)
+        if val_auc > best_auc:
+            best_auc = val_auc
+            save_checkpoint(model)
+```
+
+**Key Decision**: Subject-wise data splitting. All pages from a single child go into the same split (train/val/test). This prevents data leakage—the model can't memorize a child's handwriting style and achieve inflated performance.
+
+![Training curves showing loss and accuracy over epochs](../../assets/dysgraphia-training-curves.png)
+
+The training curves above show the model converging with early stopping based on validation AUC, preventing overfitting while maintaining strong generalization.
+
+### Layer 2: CAM Generation
+
+After training, we generate attention heatmaps using Grad-CAM:
+
+```python
+class GradCAM:
+    def __init__(self, model, target_layer):
+        self.model = model
+        self.target_layer = target_layer
+        self.gradients = None
+        self.activations = None
+
+        # Register hooks
+        target_layer.register_forward_hook(self.save_activation)
+        target_layer.register_backward_hook(self.save_gradient)
+
+    def generate_heatmap(self, input_image, target_class):
+        # Forward pass
+        output = self.model(input_image)
+
+        # Backward pass for target class
+        self.model.zero_grad()
+        output[0, target_class].backward()
+
+        # Compute CAM: weighted combination of activations
+        weights = self.gradients.mean(dim=(2, 3), keepdim=True)
+        cam = (weights * self.activations).sum(dim=1)
+        cam = F.relu(cam)  # ReLU removes negative influence
+
+        # Normalize to [0, 1]
+        cam = cam - cam.min()
+        cam = cam / cam.max()
+
+        return cam
+```
+
+The resulting heatmap shows where the CNN is "looking" when making its prediction.
+
+### Layer 3: CAM-Weighted Feature Extraction
+
+Here's where it gets interesting. Traditional handwriting metrics are computed on the original image:
+
+```python
+# Traditional feature extraction
+spacing_irregularity = np.std(character_spacings)
+baseline_wobble = np.var(baseline_deviations)
+size_variance = np.std(bounding_box_heights)
+stroke_width_std = np.std(skeleton_widths)
+```
+
+Then we recompute them using CAM-weighted regions:
+
+```python
+def compute_cam_weighted_features(image, cam_heatmap):
+    # Resize CAM to match image dimensions
+    cam_resized = cv2.resize(cam_heatmap, (image.shape[1], image.shape[0]))
+
+    # Weight pixel values by CAM intensity
+    weighted_image = image * cam_resized
+
+    # Extract features from weighted image
+    cam_spacing = extract_spacing_irregularity(weighted_image)
+    cam_baseline = extract_baseline_wobble(weighted_image)
+    cam_size_var = extract_size_variance(weighted_image)
+    cam_stroke_std = extract_stroke_width_std(weighted_image)
+
+    return [cam_spacing, cam_baseline, cam_size_var, cam_stroke_std]
+```
+
+The intuition: features extracted from high-attention regions are more diagnostically relevant than those from the entire image.
+
+![Feature distributions comparing raw vs CAM-weighted metrics](../../assets/dysgraphia-feature-distributions.png)
+
+The visualization above demonstrates how CAM weighting changes feature distributions. Notice how CAM-weighted features (bottom row) show clearer separation between control (blue) and dysgraphic (orange) groups compared to raw features (top row). The CAM weighting amplifies diagnostically relevant patterns while suppressing noise from irrelevant regions.
+
+### Layer 4: EDI Construction
+
+The Explainable Dysgraphia Index combines CAM-weighted features:
+
+```python
+# Equal weighting approach
+EDI_equal = np.mean([cam_spacing, cam_baseline, cam_size_var, cam_stroke_std])
+
+# Learned weighting approach (fit on training data)
+from sklearn.linear_model import LogisticRegression
+
+feature_matrix = np.column_stack([
+    cam_spacing_features,
+    cam_baseline_features,
+    cam_size_var_features,
+    cam_stroke_std_features
+])
+
+weights = LogisticRegression().fit(feature_matrix, labels).coef_
+EDI_weighted = weights @ feature_matrix.T
+```
+
+The final system outputs:
+1. CNN prediction (0-1 probability)
+2. CAM heatmap overlay
+3. Raw vs CAM-weighted feature values
+4. EDI score with interpretation
+
+## CAM vs SHAP: Why Spatial Matters
+
+SHAP (SHapley Additive exPlanations) is the gold standard for model interpretability. So why not use it?
+
+### SHAP: Feature Attribution
+
+```python
+import shap
+
+# SHAP explains predictions via Shapley values
+explainer = shap.DeepExplainer(model, background_images)
+shap_values = explainer.shap_values(test_image)
+
+# Result: importance score for each pixel
+# High values = pixels that increased prediction confidence
+```
+
+**What you get:**
+- Per-pixel importance scores
+- Feature interaction effects
+- Theoretically grounded (game theory)
+- Model-agnostic framework
+
+**Limitations for medical imaging:**
+- No inherent spatial structure—important pixels might be scattered
+- Requires many background samples for reliable estimates
+- Computationally expensive (1000+ model evaluations per image)
+- Doesn't connect to domain-specific features (spacing, baseline, etc.)
+
+### CAM: Spatial Attention
+
+```python
+# CAM generates spatial heatmaps directly
+cam_generator = GradCAM(model, model.layer4)
+heatmap = cam_generator.generate_heatmap(test_image, target_class=1)
+
+# Result: 2D heatmap highlighting diagnostic regions
+```
+
+**What you get:**
+- Coherent spatial regions (not scattered pixels)
+- Single forward + backward pass (100x faster than SHAP)
+- Clinically intuitive overlays
+- Direct weighting for spatial feature extraction
+
+**Trade-offs:**
+- Specific to CNNs (requires convolutional layers)
+- Less theoretically grounded than Shapley values
+- Can miss fine-grained details in early layers
+
+## The Experiment: Does CAM Actually Help?
+
+I tested five approaches on the dysgraphia detection task:
+
+| Method | Description | ROC-AUC |
+|--------|-------------|---------|
+| Features Only | Raw handwriting metrics (no CNN, no CAM) | 0.73 |
+| CNN Only | ResNet-18 predictions alone | 0.84 |
+| EDI Equal | CAM-weighted features, equal weights | 0.78 |
+| EDI Weighted | CAM-weighted features, learned weights | 0.81 |
+| **CNN + EDI Fusion** | **Logistic regression on [CNN_pred, EDI_score]** | **0.89** |
+
+**Key Findings:**
+
+1. **CAM improves feature quality**: EDI (0.81) outperforms raw features (0.73)
+2. **CNNs capture non-linear patterns**: CNN-only (0.84) beats handcrafted features
+3. **Fusion is best**: Combining CNN predictions with EDI (0.89) beats either alone
+4. **Interpretability + accuracy**: We get both visual explanations AND better performance
+
+![EDI score distributions for control vs dysgraphic groups](../../assets/dysgraphia-edi-distributions.png)
+
+The EDI score distributions show clear separation between groups. The weighted EDI (right) provides slightly better discrimination than equal weighting (left), demonstrating that learned feature weights capture clinically meaningful patterns.
+
+### CAM Stability Matters
+
+One challenge: CAM heatmaps can be unstable across training runs. I measured stability using IoU (Intersection over Union) between heatmaps from different random seeds:
+
+```python
+def compute_cam_stability(model1, model2, test_images):
+    iou_scores = []
+
+    for image in test_images:
+        cam1 = generate_cam(model1, image)
+        cam2 = generate_cam(model2, image)
+
+        # Threshold heatmaps at 0.5
+        mask1 = (cam1 > 0.5)
+        mask2 = (cam2 > 0.5)
+
+        # Compute IoU
+        intersection = (mask1 & mask2).sum()
+        union = (mask1 | mask2).sum()
+        iou = intersection / union if union > 0 else 0
+
+        iou_scores.append(iou)
+
+    return np.mean(iou_scores)
+```
+
+**Results:**
+- Grad-CAM stability: IoU = 0.42 (moderate)
+- Score-CAM stability: IoU = 0.58 (good)
+
+Score-CAM's gradient-free approach produces more consistent heatmaps, making it more reliable for clinical use.
+
+## Real-World Application: Case Study Visualization
+
+The system generates comprehensive case study visualizations that clinicians can use to validate predictions:
+
+![True positive case study showing CAM analysis](../../assets/dysgraphia-case-study-true-positive.png)
+
+This visualization format provides everything needed for clinical interpretation:
+
+**Top Row - Visual Analysis:**
+- **Original Image**: The raw handwriting sample showing irregular character sizing and spacing
+- **CAM Heatmap**: Raw attention map where warm colors (red/orange) indicate regions the CNN focuses on
+- **CAM Overlay**: Heatmap superimposed on the original image, clearly showing the model is attending to problematic areas with irregular letter spacing and baseline deviations
+
+**Bottom Row - Quantitative Analysis:**
+- **Feature Comparison**: Bar chart comparing raw features (blue) versus CAM-weighted features (orange). Notice how character size variance dominates in the raw features, but CAM weighting reveals that the model is actually focusing on this specific irregularity
+- **EDI Scores**: Both equal-weighted (0.168) and learned-weighted (0.673) EDI scores, with the learned approach showing stronger confidence in the dysgraphia prediction
+
+**Right Panel - Clinical Summary:**
+The metadata shows this is a true positive—the model correctly identified dysgraphia, and the CAM heatmap confirms it's looking at clinically relevant features (irregular character sizing in the highlighted regions).
+
+This output format is clinically actionable—therapists can see both the model's attention and quantified feature deviations, allowing them to verify the AI's reasoning before making diagnostic decisions.
+
+### When the Model Gets It Wrong: Interpretability Reveals Failure Modes
+
+One crucial advantage of CAM-based explainability is that it helps identify *why* the model makes mistakes:
+
+![False positive case study revealing model error](../../assets/dysgraphia-case-study-false-positive.png)
+
+In this false positive case, the model incorrectly predicted dysgraphia for a control sample. But the CAM heatmap reveals the problem: the model is focusing on regions with slightly irregular spacing that happen to occur in normal handwriting variation. The CAM-weighted features show minimal deviations (note the smaller bar values in the feature comparison), and the EDI scores are much lower than in true dysgraphia cases.
+
+A clinician reviewing this output would immediately notice:
+1. The CAM heatmap highlights only small, scattered regions (not coherent problem areas)
+2. The feature deviations are minimal compared to true positive cases
+3. The low EDI scores suggest the prediction isn't strong
+
+This transparency allows clinicians to override questionable predictions and provides researchers with insights for model improvement—perhaps the model needs more diverse training examples of normal handwriting variation.
+
+## Challenges & Solutions
+
+### Challenge 1: Low CAM Stability
+
+Early experiments had IoU < 0.3, meaning heatmaps varied wildly between runs.
+
+**Solution:** Switched from Grad-CAM to Score-CAM and added stability testing to the pipeline. Now the system warns if IoU falls below 0.3 and suggests using a different backbone architecture.
+
+### Challenge 2: Feature Variance Too Low
+
+Some features (especially stroke width) had near-zero variance, making them useless for discrimination.
+
+**Solution:**
+1. Improved image preprocessing (better binarization thresholds)
+2. Added quality checks that flag features with std < 1e-6
+3. Used normalization that preserves relative differences
+
+### Challenge 3: Subject-Wise Splitting
+
+Random data splits gave inflated performance (~95% accuracy). The model was memorizing individual handwriting styles.
+
+**Solution:** Implemented subject-wise splitting where all pages from a child stay in one split. Performance dropped to realistic 84%, but now generalizes to unseen children.
+
+### Challenge 4: Connecting CAM to Clinical Features
+
+CAM heatmaps alone don't explain *why* a region matters. Is it spacing? Baseline wobble?
+
+**Solution:** The CAM-weighted feature extraction explicitly computes clinical metrics on high-attention regions, creating an interpretable bridge.
+
+## What I Learned
+
+**Spatial XAI methods outperform global ones for image tasks.** SHAP is powerful, but CAM's spatial heatmaps better match how humans (especially clinicians) reason about images.
+
+**Stability is underrated.** An XAI method that gives different explanations on every run isn't useful in clinical practice. Testing explanation consistency should be standard.
+
+**Hybrid models beat pure approaches.** Neither pure CNN nor pure handcrafted features work as well as combining them. Domain expertise + deep learning is the winning strategy.
+
+**Subject-wise splitting is critical.** Any medical dataset with multiple samples per patient needs careful split construction to avoid leakage.
+
+## Limitations & Future Work
+
+**Current Limitations:**
+- Binary classification only (dysgraphia yes/no, not severity grading)
+- 2D heatmaps don't capture temporal aspects of writing (stroke order, pressure)
+- Trained on single language/script (English handwriting)
+- Requires labeled data (no semi-supervised or active learning)
+
+**Future Enhancements:**
+- **Multi-class severity grading**: Mild/moderate/severe classifications
+- **Longitudinal tracking**: Monitor improvement over intervention
+- **Temporal CAM**: Analyze writing videos to capture dynamics
+- **Cross-lingual validation**: Test on different writing systems
+- **Counterfactual explanations**: "If baseline wobble decreased by 20%, prediction would flip"
+- **Uncertainty quantification**: Confidence intervals on both predictions and CAM heatmaps
+
+## Why This Matters
+
+Medical AI adoption hinges on interpretability. Doctors, therapists, and patients need to understand AI decisions before acting on them.
+
+CAM provides a practical middle ground:
+- More interpretable than black-box CNNs
+- More spatially coherent than pixel-level SHAP
+- Fast enough for real-time clinical use
+- Connects to domain-specific features
+
+The EDI system demonstrates that you can have both accuracy and explainability—you don't have to choose.
+
+As AI moves into high-stakes domains like healthcare, the question isn't "how accurate is your model?" but "can you explain why it's right (or wrong)?"
+
+CAM-based approaches provide one answer: show me where the model is looking, weight clinically meaningful features by attention, and validate that both the prediction and explanation make medical sense.
+
+The code is modular, the approach generalizes to other medical imaging tasks (X-rays, skin lesions, retinal scans), and the interpretability framework bridges the gap between deep learning and clinical practice.
+
+The future of medical AI isn't just smarter models—it's models that can explain themselves in ways clinicians understand and trust.
