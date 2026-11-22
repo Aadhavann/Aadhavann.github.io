@@ -2,36 +2,260 @@
 import BaseHead from '../components/BaseHead.astro';
 import Footer from '../components/Footer.astro';
 import Header from '../components/Header.astro';
-import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
-import { Image } from 'astro:assets';
-import HomeHeroImage from '../assets/1.png';
+import {
+	SITE_TITLE,
+	certifications,
+	education,
+	experience,
+	profile,
+	projects,
+	research,
+	writing,
+} from '../data/profile';
+
+const publications = research.filter((item) => item.kind === 'publication');
+const otherResearch = research.filter((item) => item.kind === 'research');
+
+function authorList(authors: { name: string; isMe?: boolean }[]) {
+	const parts: string[] = [];
+	authors.forEach((author, index) => {
+		const suffix = index === authors.length - 1 ? '' : index === authors.length - 2 ? ' and ' : ', ';
+		parts.push(author.isMe ? `<span class="me">${author.name}</span>${suffix}` : `${author.name}${suffix}`);
+	});
+	return parts.join('');
+}
 ---
 
 <!doctype html>
 <html lang="en">
 	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
+		<BaseHead title={SITE_TITLE} />
 	</head>
 	<body>
 		<Header />
 		<main>
-			<Image src={HomeHeroImage} alt="Aadhavan Anbumunee Portfolio" />
-			<h1>Hi, I'm Aadhavan</h1>
-			<p>
-				I'm a computer science student passionate about technology. I work on projects involving <strong>Large Language Models</strong>, <strong>Machine Learning</strong>, and <strong>Data Science</strong>.
-			</p>
-			<p>
-				Currently diving deep into both the technical and theoretical aspects of AI.
-			</p>
-			<h2>Projects & Interests</h2>
-			<ul>
-				<li><strong>LLM Applications</strong> - Building with transformer architectures and multimodal AI</li>
-				<li><strong>Machine Learning</strong> - Practical implementations in ML and data science</li>
-				<li><strong>Research</strong> - Exploring emerging topics in AI</li>
-			</ul>
-			<p>
-				Check out my <a href="/projects">projects</a> to see what I've been working on and learning about.
-			</p>
+			<div class="masthead">
+				<h1>{profile.name}</h1>
+				<p class="role">{profile.role}</p>
+				<ul class="contact">
+					{
+						profile.links.map((link) => (
+							<li>
+								<span class="label">{link.label}</span>
+								<a href={link.href} rel={link.href.startsWith('http') ? 'me noopener' : undefined}>
+									{link.text}
+								</a>
+							</li>
+						))
+					}
+					<li><span class="label">Based in</span><span class="muted">{profile.location}</span></li>
+				</ul>
+			</div>
+
+			<section aria-label="About">
+				{profile.intro.map((paragraph) => <p class="lede">{paragraph}</p>)}
+				<ul class="tags" aria-label="Research interests">
+					{profile.interests.map((interest) => <li>{interest}</li>)}
+				</ul>
+			</section>
+
+			<section id="research" aria-labelledby="research-heading">
+				<h2 id="research-heading">Research</h2>
+
+				{
+					publications.map((paper) => (
+						<article class="entry">
+							<h3 class="entry-title">{paper.title}</h3>
+							<p class="authors" set:html={authorList(paper.authors ?? [])} />
+							<p class="venue">
+								{paper.venue}
+								{paper.venueNote ? <span class="venue-note"> {paper.venueNote}</span> : null}
+							</p>
+							<div class="link-row">
+								{paper.urls?.map((link) => (
+									<a href={link.href} rel="noopener">
+										{link.label}
+									</a>
+								))}
+								{paper.repo ? (
+									<a href={paper.repo} rel="noopener">
+										Code
+									</a>
+								) : null}
+							</div>
+							{paper.abstract ? (
+								<div class="abstract">
+									<span class="abstract-label">Abstract</span>
+									{paper.abstract}
+								</div>
+							) : null}
+							{paper.keywords ? (
+								<ul class="tags">
+									{paper.keywords.map((keyword) => (
+										<li>{keyword}</li>
+									))}
+								</ul>
+							) : null}
+						</article>
+					))
+				}
+
+				<figure>
+					<img
+						src="/research/dysgraphia-cam-overlay.png"
+						alt="A single line of a child's handwriting with a class activation map overlaid in colour, showing where the classifier looked."
+						width="1337"
+						height="316"
+						loading="lazy"
+					/>
+					<figcaption>
+						Class activation map overlaid on a handwriting sample from the Potential Dysgraphia dataset.
+						The overlay is what makes a screening decision checkable: a clinician can see whether the
+						model attended to letter formation and spacing, or to something incidental on the page.
+					</figcaption>
+				</figure>
+
+				{
+					otherResearch.map((work) => (
+						<article class="entry" style="margin-top: 2rem;">
+							<h3 class="entry-title">
+								{work.title}
+								{work.status ? <span class="status-tag">{work.status}</span> : null}
+							</h3>
+							<p class="venue">
+								{work.venue}
+								{work.venueNote ? <span class="venue-note"> {work.venueNote}</span> : null}
+							</p>
+							{work.abstract ? (
+								<div class="abstract">
+									<span class="abstract-label">Summary</span>
+									{work.abstract}
+								</div>
+							) : null}
+							{work.keywords ? (
+								<ul class="tags">
+									{work.keywords.map((keyword) => (
+										<li>{keyword}</li>
+									))}
+								</ul>
+							) : null}
+						</article>
+					))
+				}
+			</section>
+
+			<section id="experience" aria-labelledby="experience-heading">
+				<h2 id="experience-heading">Experience</h2>
+				{
+					experience.map((role) => (
+						<article class="entry">
+							<div class="entry-head">
+								<span class="entry-title">
+									{role.title}
+									<span class="faint"> &middot; </span>
+									{role.org}
+								</span>
+								<span class="entry-meta">
+									{role.start} &ndash; {role.end}
+								</span>
+							</div>
+							<p class="entry-sub">{role.location}</p>
+							{role.summary ? <p class="entry-summary">{role.summary}</p> : null}
+							<ul class="tight">
+								{role.highlights.map((item) => (
+									<li>{item}</li>
+								))}
+							</ul>
+							{role.stack ? (
+								<ul class="tags">
+									{role.stack.map((item) => (
+										<li>{item}</li>
+									))}
+								</ul>
+							) : null}
+						</article>
+					))
+				}
+			</section>
+
+			<section id="projects" aria-labelledby="projects-heading">
+				<h2 id="projects-heading">Selected projects</h2>
+				{
+					projects.map((project) => (
+						<article class="entry">
+							<div class="entry-head">
+								<span class="entry-title">{project.name}</span>
+								<span class="entry-meta">{project.role}</span>
+							</div>
+							<p class="entry-summary">{project.blurb}</p>
+							{project.highlights ? (
+								<ul class="tight">
+									{project.highlights.map((item) => (
+										<li>{item}</li>
+									))}
+								</ul>
+							) : null}
+							{project.links.length > 0 ? (
+								<div class="link-row">
+									{project.links.map((link) => (
+										<a href={link.href} rel="noopener">
+											{link.label}
+										</a>
+									))}
+								</div>
+							) : null}
+							{project.stack ? (
+								<ul class="tags">
+									{project.stack.map((item) => (
+										<li>{item}</li>
+									))}
+								</ul>
+							) : null}
+						</article>
+					))
+				}
+			</section>
+
+			<section id="background" aria-labelledby="background-heading">
+				<h2 id="background-heading">Background</h2>
+
+				{
+					education.map((school) => (
+						<article class="entry">
+							<div class="entry-head">
+								<span class="entry-title">{school.degree}</span>
+								<span class="entry-meta">
+									{school.start} &ndash; {school.end}
+								</span>
+							</div>
+							<p class="entry-sub">
+								{school.org}
+								{school.detail ? <span class="faint"> &middot; {school.detail}</span> : null}
+							</p>
+						</article>
+					))
+				}
+
+				<h3 style="margin-top: 2rem; font-size: 0.95rem;">Certifications</h3>
+				<ul class="plain" style="margin-top: 0.6rem;">
+					{
+						certifications.map((certification) => (
+							<li class="entry" style="margin-bottom: 0.5rem;">
+								<div class="entry-head">
+									<span>{certification.name}</span>
+									<span class="entry-meta">{certification.date}</span>
+								</div>
+								<span class="faint small">{certification.issuer}</span>
+							</li>
+						))
+					}
+				</ul>
+
+				<h3 style="margin-top: 2rem; font-size: 0.95rem;">Technical</h3>
+				<ul class="tags" style="margin-top: 0.7rem;">
+					{writing.map((skill) => <li>{skill}</li>)}
+				</ul>
+			</section>
 		</main>
 		<Footer />
 	</body>
