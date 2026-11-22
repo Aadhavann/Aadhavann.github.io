@@ -9,12 +9,10 @@ import {
 	experience,
 	profile,
 	projects,
-	research,
+	publications,
+	ventures,
 	writing,
 } from '../data/profile';
-
-const publications = research.filter((item) => item.kind === 'publication');
-const otherResearch = research.filter((item) => item.kind === 'research');
 
 function authorList(authors: { name: string; isMe?: boolean }[]) {
 	const parts: string[] = [];
@@ -114,34 +112,6 @@ function authorList(authors: { name: string; isMe?: boolean }[]) {
 						model attended to letter formation and spacing, or to something incidental on the page.
 					</figcaption>
 				</figure>
-
-				{
-					otherResearch.map((work) => (
-						<article class="entry" style="margin-top: 2rem;">
-							<h3 class="entry-title">
-								{work.title}
-								{work.status ? <span class="status-tag">{work.status}</span> : null}
-							</h3>
-							<p class="venue">
-								{work.venue}
-								{work.venueNote ? <span class="venue-note"> {work.venueNote}</span> : null}
-							</p>
-							{work.abstract ? (
-								<div class="abstract">
-									<span class="abstract-label">Summary</span>
-									{work.abstract}
-								</div>
-							) : null}
-							{work.keywords ? (
-								<ul class="tags">
-									{work.keywords.map((keyword) => (
-										<li>{keyword}</li>
-									))}
-								</ul>
-							) : null}
-						</article>
-					))
-				}
 			</section>
 
 			<section id="experience" aria-labelledby="experience-heading">
@@ -169,6 +139,35 @@ function authorList(authors: { name: string; isMe?: boolean }[]) {
 							{role.stack ? (
 								<ul class="tags">
 									{role.stack.map((item) => (
+										<li>{item}</li>
+									))}
+								</ul>
+							) : null}
+						</article>
+					))
+				}
+			</section>
+
+			<section id="entrepreneurship" aria-labelledby="entrepreneurship-heading">
+				<h2 id="entrepreneurship-heading">Entrepreneurship</h2>
+				{
+					ventures.map((venture) => (
+						<article class="entry">
+							<div class="entry-head">
+								<span class="entry-title">
+									<a href={venture.href} rel="noopener">{venture.name}</a>
+								</span>
+								<span class="entry-meta">{venture.role}</span>
+							</div>
+							<p class="entry-summary">{venture.blurb}</p>
+							<ul class="tight">
+								{venture.highlights.map((item) => (
+									<li>{item}</li>
+								))}
+							</ul>
+							{venture.stack ? (
+								<ul class="tags">
+									{venture.stack.map((item) => (
 										<li>{item}</li>
 									))}
 								</ul>

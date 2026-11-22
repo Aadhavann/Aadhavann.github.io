@@ -47,7 +47,6 @@ export const profile = {
 };
 
 export interface Publication {
-	kind: 'publication' | 'research';
 	title: string;
 	authors?: { name: string; isMe?: boolean }[];
 	venue?: string;
@@ -58,12 +57,10 @@ export interface Publication {
 	repo?: string;
 	abstract?: string;
 	keywords?: string[];
-	status?: string;
 }
 
-export const research: Publication[] = [
+export const publications: Publication[] = [
 	{
-		kind: 'publication',
 		title: 'Image-Based Dysgraphia Detection with Explainability Using CAMs and EDI',
 		authors: [
 			{ name: 'Varsha Sreekumar' },
@@ -105,21 +102,34 @@ export const research: Publication[] = [
 			'pediatric',
 		],
 	},
+];
+
+export interface Venture {
+	name: string;
+	role: string;
+	href: string;
+	blurb: string;
+	highlights: string[];
+	stack?: string[];
+}
+
+export const ventures: Venture[] = [
 	{
-		kind: 'research',
-		title: 'Learning and Retrieving: A Comprehensive Evaluation of Hybrid Code Generation Approaches',
-		venue: 'Final-year capstone research, Vellore Institute of Technology',
-		venueNote: 'Supervised by Dr. Mehfooza M, Associate Professor, SCOPE. Assessed by faculty examiners.',
-		date: '2026',
-		status: 'Capstone research. Not published.',
-		abstract:
-			'A two-semester study of whether retrieval-augmented generation and parameter-efficient ' +
-			'fine-tuning are substitutes or complements for code generation. Both approaches were ' +
-			'evaluated on CodeLlama-7B against MBPP, then combined through a learned router that ' +
-			'selects a strategy per prompt. The router reached 41.0% Pass@1 against the strongest ' +
-			'single strategy, with the largest gains on prompts where retrieval and fine-tuning ' +
-			'disagree.',
-		keywords: ['RAG', 'LoRA', 'CodeLlama-7B', 'MBPP', 'model routing', 'Pass@1'],
+		name: 'Sstudize',
+		role: 'Co-founder',
+		href: 'https://sstudize.co.in/',
+		blurb:
+			'A learning platform for underprivileged students. Pre-incubated at VIT Vellore, with ' +
+			'associations including GDC, IIT Madras and PIEDS, BITS Pilani.',
+		highlights: [
+			'Recipient of the TIDE 2.0 non-equity seed grant from the Ministry of Electronics and ' +
+				'Information Technology, Government of India.',
+			'Predictive ML models that increased user engagement by 30% through personalised ' +
+				'learning roadmaps.',
+			'Agentic AI features in a native Android app for dynamic student profiling and ' +
+				'adaptive recommendations.',
+		],
+		stack: ['Python', 'Android', 'ML'],
 	},
 ];
 
@@ -240,24 +250,6 @@ export const projects: Project[] = [
 			{ label: 'Code', href: 'https://github.com/Aadhavann/project-elion' },
 		],
 		stack: ['TypeScript', 'Next.js', 'TxGemma'],
-		featured: true,
-	},
-	{
-		name: 'Sstudize',
-		role: 'Founding team',
-		blurb:
-			'A learning platform for underprivileged students. Pre-incubated at VIT Vellore, with ' +
-			'associations including GDC, IIT Madras and PIEDS, BITS Pilani.',
-		highlights: [
-			'Recipient of the TIDE 2.0 non-equity seed grant from the Ministry of Electronics and ' +
-				'Information Technology, Government of India.',
-			'Predictive ML models that increased user engagement by 30% through personalised ' +
-				'learning roadmaps.',
-			'Agentic AI features in a native Android app for dynamic student profiling and ' +
-				'adaptive recommendations.',
-		],
-		links: [],
-		stack: ['Python', 'Android', 'ML'],
 		featured: true,
 	},
 ];
