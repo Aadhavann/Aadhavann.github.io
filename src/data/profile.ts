@@ -116,7 +116,7 @@ export interface Venture {
 export const ventures: Venture[] = [
 	{
 		name: 'Sstudize',
-		role: 'Founding Engineer',
+		role: 'I was on the founding team, doing the engineering',
 		href: 'https://sstudize.co.in/',
 		blurb:
 			'A learning platform for underprivileged students. Pre-incubated at VIT Vellore, with ' +
