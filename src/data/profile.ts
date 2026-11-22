@@ -210,30 +210,9 @@ export interface Project {
 	highlights?: string[];
 	links: { label: string; href: string }[];
 	stack?: string[];
-	featured?: boolean;
 }
 
 export const projects: Project[] = [
-	{
-		name: 'Explainable Dysgraphia Index',
-		role: 'Co-author, published research',
-		blurb:
-			'The reference implementation behind the I5CPS 2026 paper above. Score-CAM attention ' +
-			'maps weight four clinical handwriting metrics, so a screening decision arrives with an ' +
-			'explanation an occupational therapist can check.',
-		highlights: [
-			'ResNet-18 backbone with Score-CAM, trained on the Mendeley Potential Dysgraphia dataset.',
-			'Out-of-fold evaluation for every head, with bootstrap confidence intervals, and a ' +
-				'regression test asserting no head is scored on a label it was fitted to.',
-			'Measured CAM stability as mean IoU between heatmaps from independently trained models.',
-		],
-		links: [
-			{ label: 'Code', href: 'https://github.com/Aadhavann/Dysgraphia-Detection' },
-			{ label: 'Paper', href: 'https://doi.org/10.1109/I5CPS67958.2026.11452617' },
-		],
-		stack: ['Python', 'PyTorch', 'OpenCV', 'scikit-learn'],
-		featured: true,
-	},
 	{
 		name: 'Project Elion',
 		role: 'Solo',
@@ -250,7 +229,6 @@ export const projects: Project[] = [
 			{ label: 'Code', href: 'https://github.com/Aadhavann/project-elion' },
 		],
 		stack: ['TypeScript', 'Next.js', 'TxGemma'],
-		featured: true,
 	},
 ];
 
