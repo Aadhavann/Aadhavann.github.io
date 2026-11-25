@@ -152,8 +152,7 @@ export const experience: Role[] = [
 		start: 'Jun 2026',
 		end: 'Present',
 		summary:
-			'Workers\u2019 compensation and auto casualty. The work is healthcare-adjacent by ' +
-			'nature: treatment authorisation, injury classification and medical cost.',
+			'Workers\u2019 compensation and auto casualty.',
 		highlights: [
 			'Built an AI-powered analytics agent, integrated with dashboards across the ' +
 				'organisation, that detects significant metric anomalies and identifies the affected ' +
