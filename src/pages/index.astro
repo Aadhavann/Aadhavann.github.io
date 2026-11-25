@@ -11,7 +11,6 @@ import {
 	projects,
 	publications,
 	ventures,
-	writing,
 } from '../data/profile';
 
 function authorList(authors: { name: string; isMe?: boolean }[]) {
@@ -49,13 +48,6 @@ function authorList(authors: { name: string; isMe?: boolean }[]) {
 					<li><span class="label">Based in</span><span class="muted">{profile.location}</span></li>
 				</ul>
 			</div>
-
-			<section aria-label="About">
-				{profile.intro.map((paragraph) => <p class="lede">{paragraph}</p>)}
-				<ul class="tags" aria-label="Research interests">
-					{profile.interests.map((interest) => <li>{interest}</li>)}
-				</ul>
-			</section>
 
 			<section id="research" aria-labelledby="research-heading">
 				<h2 id="research-heading">Research</h2>
@@ -248,11 +240,6 @@ function authorList(authors: { name: string; isMe?: boolean }[]) {
 							</li>
 						))
 					}
-				</ul>
-
-				<h3 style="margin-top: 2rem; font-size: 0.95rem;">Technical</h3>
-				<ul class="tags" style="margin-top: 0.7rem;">
-					{writing.map((skill) => <li>{skill}</li>)}
 				</ul>
 			</section>
 		</main>
