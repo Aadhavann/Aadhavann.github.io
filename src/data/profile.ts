@@ -247,21 +247,3 @@ export const certifications = [
 	{ name: 'AWS Certified Solutions Architect \u2013 Associate', issuer: 'Amazon Web Services', date: 'Jun 2025' },
 	{ name: 'Microsoft Certified: Azure AI Engineer Associate', issuer: 'Microsoft', date: 'Jun 2025' },
 ];
-
-export const writing = [
-	'Python',
-	'TypeScript',
-	'SQL',
-	'PyTorch',
-	'scikit-learn',
-	'LangChain',
-	'LLM agents and orchestration',
-	'Retrieval-augmented generation',
-	'LoRA and parameter-efficient fine-tuning',
-	'Explainable AI (Score-CAM, Grad-CAM)',
-	'OpenCV and computer vision',
-	'Snowflake',
-	'AWS',
-	'Azure AI',
-	'Next.js and React',
-];
