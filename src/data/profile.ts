@@ -35,8 +35,7 @@ export const profile = {
 			'reasoning legible to the clinicians who have to act on it. My industry work is ' +
 			'on the applied side of the same problem, in workers\u2019 compensation and ' +
 			'healthcare analytics, where the outputs drive treatment and claim decisions.',
-		'I am currently in Data & Analytics at Enlyte, and I am applying to MS programs in ' +
-			'computer science for Fall 2027.',
+		'I am currently at working Enlyte.',
 	],
 	interests: [
 		'Explainable AI for clinical decision support',
