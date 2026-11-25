@@ -27,22 +27,7 @@ export const profile = {
 			text: 'in/aadhavan-anbumunee',
 		},
 		{ label: 'CV', href: '/resume.pdf', text: 'Resume (PDF)' },
-	],
-	intro: [
-		'I build machine learning systems for healthcare and clinical decision support, ' +
-			'from research through to production deployment.',
-		'My research is on interpretable diagnostic screening: making a model\u2019s ' +
-			'reasoning legible to the clinicians who have to act on it. My industry work is ' +
-			'on the applied side of the same problem, in workers\u2019 compensation and ' +
-			'healthcare analytics, where the outputs drive treatment and claim decisions.',
-		'I am currently at working Enlyte.',
-	],
-	interests: [
-		'Explainable AI for clinical decision support',
-		'Medical and biomedical imaging',
-		'Applied machine learning in production',
-		'Retrieval-augmented and fine-tuned language models',
-	],
+	]
 };
 
 export interface Publication {
